@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// The athlete. Tracks their sessions and which plans they have followed over time.
+model User {
+  id           String           @id @default(uuid())
+  name         String
+  phone        String           @unique
+  email        String?
+  createdAt    DateTime         @default(now())
+  sessions     WorkoutSession[]
+  planHistory  UserPlan[]
+}
+
+// A workout program template (e.g. "Ronnie Coleman Split"). Seeded once, shared by all users.
+model WorkoutPlan {
+  id          String       @id @default(uuid())
+  name        String
+  days        WorkoutDay[]
+  userHistory UserPlan[]
+}
+
+// Tracks which plan a user is following and when. Null endDate means currently active.
+// Lets users switch plans (e.g. Ronnie in Jan, Arnold in Feb) while keeping full history.
+model UserPlan {
+  id        String      @id @default(uuid())
+  user      User        @relation(fields: [userId], references: [id])
+  userId    String
+  plan      WorkoutPlan @relation(fields: [planId], references: [id])
+  planId    String
+  startDate DateTime    @default(now())
+  endDate   DateTime?
+}
+
+// One day inside a WorkoutPlan (e.g. Day 1: Chest and Back). Seeded once, never changes.
+model WorkoutDay {
+  id        String            @id @default(uuid())
+  day       Int
+  name      String
+  muscles   String
+  plan      WorkoutPlan       @relation(fields: [planId], references: [id])
+  planId    String
+  exercises PlannedExercise[]
+  sessions  WorkoutSession[]
+}
+
+// A single exercise inside a WorkoutDay template (e.g. Bench Press, 4 sets x 10 reps).
+// This is the blueprint — not the actual data the user logs.
+model PlannedExercise {
+  id           String        @id @default(uuid())
+  name         String
+  targetSets   Int
+  targetReps   Int
+  order        Int
+  workoutDay   WorkoutDay    @relation(fields: [workoutDayId], references: [id])
+  workoutDayId String
+  logs         ExerciseLog[]
+}
+
+// Created each time a user trains. Links a user to a WorkoutDay on a specific date.
+// 122 users x 6 days a week = many sessions, but the plan template rows stay shared.
+model WorkoutSession {
+  id           String        @id @default(uuid())
+  date         DateTime      @default(now())
+  user         User          @relation(fields: [userId], references: [id])
+  userId       String
+  workoutDay   WorkoutDay    @relation(fields: [workoutDayId], references: [id])
+  workoutDayId String
+  exercises    ExerciseLog[]
+}
+
+// The user's result on one exercise during a session.
+// skipped = true if the machine was busy and they moved on.
+model ExerciseLog {
+  id                String          @id @default(uuid())
+  order             Int
+  skipped           Boolean         @default(false)
+  session           WorkoutSession  @relation(fields: [sessionId], references: [id])
+  sessionId         String
+  plannedExercise   PlannedExercise @relation(fields: [plannedExerciseId], references: [id])
+  plannedExerciseId String
+  sets              SetLog[]
+}
+
+// One individual set logged by the user (e.g. 150lbs x 10 reps).
+// Four rows here = four sets done on that exercise.
+model SetLog {
+  id            String      @id @default(uuid())
+  setNumber     Int
+  weight        Float
+  reps          Int
+  exerciseLog   ExerciseLog @relation(fields: [exerciseLogId], references: [id])
+  exerciseLogId String
+}
