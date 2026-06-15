@@ -3,6 +3,7 @@
 A step-by-step log of how this project was built, for YouTube replication.
 
 ## Stack
+
 - Next.js (App Router)
 - Tailwind CSS
 - TypeScript
@@ -17,6 +18,7 @@ A step-by-step log of how this project was built, for YouTube replication.
 ### 1. Project Setup
 
 Bootstrap with `create-next-app`:
+
 ```bash
 npx create-next-app@latest irontemple --typescript --tailwind --eslint --app --src-dir=no --import-alias="@/*"
 cd irontemple
@@ -24,6 +26,7 @@ npm run dev
 ```
 
 **Config changes after setup:**
+
 - Remove dark mode from `app/globals.css` — delete the `@media (prefers-color-scheme: dark)` block so the app always uses light theme.
 - Clear `app/page.tsx` down to a minimal placeholder component.
 
@@ -32,10 +35,13 @@ npm run dev
 ### 2. Add Prisma
 
 ```bash
+npm install @prisma/client@latest
+npm install --save-dev prisma dotenv
 npx prisma@latest init
 ```
 
 **What it generates:**
+
 - `prisma/schema.prisma` — defines the database provider and Prisma client output location
 - `prisma.config.ts` — config file that reads `DATABASE_URL` from the environment
 - `.env` — holds your connection strings (never commit this)
@@ -45,38 +51,49 @@ npx prisma@latest init
 
 ### 3. Connect Prisma to Supabase
 
-> Reference: https://www.prisma.io/docs/orm/v6/overview/databases/supabase
+> References: https://supabase.com/docs/guides/database/prisma · https://www.prisma.io/docs/orm/reference/prisma-config-reference
 
-Supabase gives you two connection types you need:
-- **Transaction Pooler** (port 6543, pgBouncer) — for the app at runtime
-- **Direct Connection** (port 5432) — for Prisma CLI commands like `db push`
+**This app deploys to Vercel (serverless).** You need two connection strings from Supabase:
 
-Add both to `.env`:
+- **`DATABASE_URL`** — Transaction pooler (port 6543). Used by the app at runtime on Vercel. Serverless functions can't hold long-lived connections, so they go through the pooler.
+- **`DIRECT_URL`** — Session pooler (port 5432). Used by `prisma.config.ts` for CLI operations (`db push`, `seed`, `migrate`). The Supabase docs confirm: _"If you are using a serverless environment, change the data source URL to `DIRECT_URL`."_
+
+Install dotenv so `prisma.config.ts` can read your `.env` file:
+
+```bash
+npm install --save-dev dotenv
+```
+
+Add both to `.env`. **If your password contains special characters** (`+`, `/`, `$`, `@`, etc.), URL-encode them first — e.g. `+` → `%2B`, `/` → `%2F`, `$` → `%24`. This is called **percent encoding**.
+
 ```env
-# Used by the app at runtime (via driver adapter)
+# Vercel runtime — transaction pooler (port 6543)
 DATABASE_URL="postgresql://postgres.[project]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres?pgbouncer=true"
 
-# Used by Prisma CLI for schema operations
+# Prisma CLI — session pooler (port 5432)
 DIRECT_URL="postgresql://postgres.[project]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres"
 ```
 
-`prisma.config.ts` always points to `DIRECT_URL` — you never swap this manually:
+Update `prisma.config.ts` to use `DIRECT_URL`:
+
 ```ts
 import "dotenv/config";
-import { defineConfig } from "prisma/config";
+import { defineConfig, env } from "prisma/config";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    url: process.env["DIRECT_URL"],
+    url: env("DIRECT_URL"),
   },
 });
 ```
 
 Push the schema and generate the client:
+
 ```bash
 npx prisma db push
 npx prisma generate
@@ -89,11 +106,15 @@ npx prisma generate
 ### 4. Prisma Client Setup
 
 Install the driver adapter:
+
 ```bash
 npm install @prisma/adapter-pg
 ```
 
+**Why `@prisma/adapter-pg`?** By default Prisma uses its own built-in database driver. This package replaces it with `pg` (node-postgres), which handles connections properly in serverless environments like Vercel. Without it, your app can exhaust the connection pool on Vercel because serverless functions spin up and down constantly. It's what makes `new PrismaPg({ connectionString: process.env.DATABASE_URL })` work in `lib/db.ts`.
+
 Create `lib/db.ts`:
+
 ```ts
 import { PrismaClient } from "../app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -113,16 +134,43 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
 ### 5. Prisma Schema (full)
 
+**Test your connection first.** Before adding the full schema, add just the `User` model and push it to confirm Supabase is connected:
+
+```prisma
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String   @unique
+  email     String?
+  createdAt DateTime @default(now())
+}
+```
+
+Then run:
+
+```bash
+npx prisma db push      # pushes changes to the database
+npx prisma generate     # regenerates the TypeScript client to match
+```
+
+**Always run both together** — `db push` updates the tables in Supabase, `prisma generate` updates the TypeScript types in `app/generated/prisma` so your code knows about the changes. Skip `generate` and TypeScript won't see the new fields.
+
+If it succeeds, you'll see the `User` table appear in your Supabase dashboard under **Table Editor**. That confirms your connection strings are correct and Prisma can talk to your database. Once confirmed, replace the full schema below.
+
+---
+
 **Data model overview:**
 
 Two types of data live in the DB:
 
 **Template data** (seeded once, never changes — shared by all users):
+
 - `WorkoutPlan` — the program (e.g. "Arnold Split")
 - `WorkoutDay` — one day inside the plan (e.g. Day 1: Chest and Back)
 - `PlannedExercise` — an exercise in a day (e.g. Bench Press, 4 sets x 10 reps)
 
 **User data** (created every time someone trains):
+
 - `User` — the athlete, identified by phone number
 - `UserPlan` — which plan they follow and when (supports switching plans)
 - `WorkoutSession` — they showed up and trained on a specific day
@@ -130,11 +178,13 @@ Two types of data live in the DB:
 - `SetLog` — one individual set: weight x reps (e.g. 150lbs x 10)
 
 **Key design decisions:**
+
 - `User` is identified by `phone`, not email. The whole app is built around phone-based lookup.
 - `UserPlan` tracks plan history with `startDate` / `endDate`. `endDate: null` = currently active.
 - Users reference shared plan rows — 122 users following Arnold all point to one plan row.
 
 Replace the contents of `prisma/schema.prisma`:
+
 ```prisma
 generator client {
   provider = "prisma-client"
@@ -234,6 +284,7 @@ model SetLog {
 ```
 
 Push to Supabase:
+
 ```bash
 npx prisma db push
 npx prisma generate
@@ -261,6 +312,7 @@ Seed data = the workout plan templates. Run once, never again unless you add a n
 **Step 1 — Configure the seed command in `prisma.config.ts`:**
 
 Prisma v7 reads the seed command from `prisma.config.ts`, not `package.json`:
+
 ```ts
 migrations: {
   path: "prisma/migrations",
@@ -269,6 +321,7 @@ migrations: {
 ```
 
 **Step 2 — Create `prisma/seed.ts`:**
+
 ```ts
 import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
@@ -315,16 +368,23 @@ async function seed() {
 }
 
 seed()
-  .catch((e) => { console.error(e); process.exit(1); })
-  .finally(async () => { await prisma.$disconnect(); });
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
 ```
 
 **Step 3 — Run it:**
+
 ```bash
 npx prisma db seed
 ```
 
 **Notes:**
+
 - Uses `DIRECT_URL` — same as the seed, it's a one-time CLI operation
 - Prisma nests the creates — one `workoutPlan.create()` creates the plan, all its days, and all exercises
 - Only run once. Running again creates duplicate plans. If you need to re-seed, delete the existing rows in Supabase first.
@@ -336,6 +396,7 @@ npx prisma db seed
 The whole app is a fake SMS interface — looks like an iPhone text thread.
 
 **Install shadcn and components:**
+
 ```bash
 npx shadcn@latest init -d
 npx shadcn@latest add input scroll-area button popover
@@ -353,7 +414,11 @@ import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 type Message = { from: "bot" | "user"; text: string };
 
@@ -374,7 +439,7 @@ function renderText(text: string) {
       </Link>
     ) : (
       part
-    )
+    ),
   );
 }
 
@@ -408,7 +473,10 @@ export default function Page() {
       const data = await res.json();
       if (data.user) {
         setState("idle");
-        addMessage({ from: "bot", text: `Hey ${data.user.name}! 👋 Type HERE when you're at the gym.` });
+        addMessage({
+          from: "bot",
+          text: `Hey ${data.user.name}! 👋 Type HERE when you're at the gym.`,
+        });
       } else {
         setState("idle");
         addMessage({ from: "bot", text: `Welcome! Type JOIN to sign up.` });
@@ -434,7 +502,6 @@ export default function Page() {
 
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-gray-100 overflow-hidden gap-3">
-
       {/* Dev toolbar */}
       <div className="flex items-center gap-3 flex-wrap justify-center">
         <span className="text-xs text-muted-foreground">Simulate day:</span>
@@ -443,19 +510,30 @@ export default function Page() {
             key={day}
             onClick={() => setSimDay(i)}
             className={`text-xs px-2 py-1 rounded-md border transition-colors ${
-              simDay === i ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+              simDay === i
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted"
             }`}
           >
             {day}
           </button>
         ))}
-        <Link href="/history" className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors">
+        <Link
+          href="/history"
+          className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors"
+        >
           History
         </Link>
-        <Link href="/prs" className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors">
+        <Link
+          href="/prs"
+          className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors"
+        >
           PRs
         </Link>
-        <Link href="/email" className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors">
+        <Link
+          href="/email"
+          className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors"
+        >
           Email
         </Link>
         <Popover>
@@ -466,14 +544,39 @@ export default function Page() {
             <p className="text-xs font-semibold mb-2">Available Commands</p>
             <div className="flex flex-col gap-2">
               {[
-                { cmd: "JOIN", desc: "Sign up with your phone number", when: "Any time" },
-                { cmd: "HERE", desc: "Start today's workout", when: "Any time" },
-                { cmd: "CHANGE", desc: "Switch to a different plan", when: "Any time" },
-                { cmd: "START", desc: "Begin the exercise list", when: "After HERE" },
-                { cmd: "SKIP", desc: "Skip the current exercise", when: "During workout" },
+                {
+                  cmd: "JOIN",
+                  desc: "Sign up with your phone number",
+                  when: "Any time",
+                },
+                {
+                  cmd: "HERE",
+                  desc: "Start today's workout",
+                  when: "Any time",
+                },
+                {
+                  cmd: "CHANGE",
+                  desc: "Switch to a different plan",
+                  when: "Any time",
+                },
+                {
+                  cmd: "START",
+                  desc: "Begin the exercise list",
+                  when: "After HERE",
+                },
+                {
+                  cmd: "SKIP",
+                  desc: "Skip the current exercise",
+                  when: "During workout",
+                },
               ].map(({ cmd, desc, when }) => (
                 <div key={cmd}>
-                  <p className="text-xs font-mono font-medium">{cmd} <span className="font-sans font-normal text-muted-foreground">— {when}</span></p>
+                  <p className="text-xs font-mono font-medium">
+                    {cmd}{" "}
+                    <span className="font-sans font-normal text-muted-foreground">
+                      — {when}
+                    </span>
+                  </p>
                   <p className="text-xs text-muted-foreground">{desc}</p>
                 </div>
               ))}
@@ -498,7 +601,10 @@ export default function Page() {
         <ScrollArea className="flex-1 px-4 py-4">
           <div className="flex flex-col gap-3">
             {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                key={i}
+                className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}
+              >
                 <div
                   className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap ${
                     msg.from === "user"
@@ -520,7 +626,9 @@ export default function Page() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={state === "phone" ? "Enter your phone number..." : "Message"}
+            placeholder={
+              state === "phone" ? "Enter your phone number..." : "Message"
+            }
             className="rounded-full text-sm"
           />
           <Button size="sm" onClick={handleSend} className="rounded-full px-4">
@@ -536,6 +644,7 @@ export default function Page() {
 **Key concepts:**
 
 Two pieces of state drive the whole app:
+
 - `state` — where in the conversation the user is (`phone`, `idle`, `onboarding_name`, `onboarding_plan`, `workout_ready`, `exercise_active`)
 - `context` — data carried between steps (name, plans, exercises, sessionId, exerciseIndex)
 
@@ -553,22 +662,30 @@ Phone is saved to `localStorage` so the history, PRs, and email pages know who y
 
 One POST route that acts as a state machine:
 
-| State | Input | Action |
-|---|---|---|
-| `idle` | `JOIN` | Check if phone exists → start onboarding |
-| `idle` | `HERE` | Load active plan → get today's day → show exercises |
-| `onboarding_name` | any text | Save name, fetch plans, ask user to pick |
-| `onboarding_plan` | `1` or `2` | Create `User` + `UserPlan` in DB |
-| `workout_ready` | `START` | Create `WorkoutSession`, show first exercise |
-| `exercise_active` | `150x10 160x8` | Parse sets → save logs → show next exercise |
-| `exercise_active` | `SKIP` | Save skipped log → show next exercise |
+| State             | Input          | Action                                              |
+| ----------------- | -------------- | --------------------------------------------------- |
+| `idle`            | `JOIN`         | Check if phone exists → start onboarding            |
+| `idle`            | `HERE`         | Load active plan → get today's day → show exercises |
+| `onboarding_name` | any text       | Save name, fetch plans, ask user to pick            |
+| `onboarding_plan` | `1` or `2`     | Create `User` + `UserPlan` in DB                    |
+| `workout_ready`   | `START`        | Create `WorkoutSession`, show first exercise        |
+| `exercise_active` | `150x10 160x8` | Parse sets → save logs → show next exercise         |
+| `exercise_active` | `SKIP`         | Save skipped log → show next exercise               |
 
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 function getTodayWorkoutDay(simDay?: number): number {
-  const map: Record<number, number> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 0: 0 };
+  const map: Record<number, number> = {
+    1: 1,
+    2: 2,
+    3: 3,
+    4: 4,
+    5: 5,
+    6: 6,
+    0: 0,
+  };
   const day = simDay !== undefined ? simDay : new Date().getDay();
   return map[day];
 }
@@ -576,7 +693,11 @@ function getTodayWorkoutDay(simDay?: number): number {
 type SetEntry = { setNumber: number; weight: number; reps: number };
 
 function parseSets(text: string): SetEntry[] | null {
-  const normalized = text.toLowerCase().replace(/,/g, " ").replace(/\s*x\s*/g, "x").trim();
+  const normalized = text
+    .toLowerCase()
+    .replace(/,/g, " ")
+    .replace(/\s*x\s*/g, "x")
+    .trim();
   const tokens = normalized.split(/\s+/);
   const sets: SetEntry[] = [];
   for (const token of tokens) {
@@ -590,7 +711,12 @@ function parseSets(text: string): SetEntry[] | null {
   return sets.length > 0 ? sets : null;
 }
 
-type Exercise = { id: string; name: string; targetSets: number; targetReps: number };
+type Exercise = {
+  id: string;
+  name: string;
+  targetSets: number;
+  targetReps: number;
+};
 
 function exercisePrompt(exercise: Exercise, lastSets?: SetEntry[]) {
   let msg = `${exercise.name} — ${exercise.targetSets} sets x ${exercise.targetReps} reps`;
@@ -602,14 +728,21 @@ function exercisePrompt(exercise: Exercise, lastSets?: SetEntry[]) {
   return msg;
 }
 
-async function getLastSets(userId: string, plannedExerciseId: string): Promise<SetEntry[]> {
+async function getLastSets(
+  userId: string,
+  plannedExerciseId: string,
+): Promise<SetEntry[]> {
   const lastLog = await prisma.exerciseLog.findFirst({
     where: { plannedExerciseId, skipped: false, session: { userId } },
     orderBy: { session: { date: "desc" } },
     include: { sets: { orderBy: { setNumber: "asc" } } },
   });
   if (!lastLog) return [];
-  return lastLog.sets.map((s) => ({ setNumber: s.setNumber, weight: s.weight, reps: s.reps }));
+  return lastLog.sets.map((s) => ({
+    setNumber: s.setNumber,
+    weight: s.weight,
+    reps: s.reps,
+  }));
 }
 
 export async function POST(req: NextRequest) {
@@ -626,7 +759,10 @@ export async function POST(req: NextRequest) {
           nextState: "idle",
         });
       }
-      return NextResponse.json({ reply: "Welcome to Iron Temple 🏋️ What's your name?", nextState: "onboarding_name" });
+      return NextResponse.json({
+        reply: "Welcome to Iron Temple 🏋️ What's your name?",
+        nextState: "onboarding_name",
+      });
     }
 
     if (input === "HERE") {
@@ -636,42 +772,82 @@ export async function POST(req: NextRequest) {
           planHistory: {
             where: { endDate: null },
             include: {
-              plan: { include: { days: { include: { exercises: { orderBy: { order: "asc" } } } } } },
+              plan: {
+                include: {
+                  days: {
+                    include: { exercises: { orderBy: { order: "asc" } } },
+                  },
+                },
+              },
             },
           },
         },
       });
 
-      if (!user) return NextResponse.json({ reply: "Phone not found. Text JOIN to sign up.", nextState: "idle" });
+      if (!user)
+        return NextResponse.json({
+          reply: "Phone not found. Text JOIN to sign up.",
+          nextState: "idle",
+        });
 
       const activePlan = user.planHistory[0];
-      if (!activePlan) return NextResponse.json({ reply: "No active plan. Text JOIN to set one up.", nextState: "idle" });
+      if (!activePlan)
+        return NextResponse.json({
+          reply: "No active plan. Text JOIN to set one up.",
+          nextState: "idle",
+        });
 
       const dayNumber = getTodayWorkoutDay(simDay);
-      if (dayNumber === 0) return NextResponse.json({ reply: "Today is Sunday — rest day. See you tomorrow 💪", nextState: "idle" });
+      if (dayNumber === 0)
+        return NextResponse.json({
+          reply: "Today is Sunday — rest day. See you tomorrow 💪",
+          nextState: "idle",
+        });
 
       const workoutDay = activePlan.plan.days.find((d) => d.day === dayNumber);
-      if (!workoutDay) return NextResponse.json({ reply: "No workout scheduled for today.", nextState: "idle" });
+      if (!workoutDay)
+        return NextResponse.json({
+          reply: "No workout scheduled for today.",
+          nextState: "idle",
+        });
 
-      const list = workoutDay.exercises.map((e, i) => `${i + 1}. ${e.name} — ${e.targetSets}x${e.targetReps}`).join("\n");
+      const list = workoutDay.exercises
+        .map((e, i) => `${i + 1}. ${e.name} — ${e.targetSets}x${e.targetReps}`)
+        .join("\n");
 
       return NextResponse.json({
         reply: `Hey ${user.name}! 👋\nDay ${dayNumber}: ${workoutDay.name}\n\n${list}\n\nType START when ready.`,
         nextState: "workout_ready",
-        context: { userId: user.id, workoutDayId: workoutDay.id, exercises: workoutDay.exercises, exerciseIndex: 0 },
+        context: {
+          userId: user.id,
+          workoutDayId: workoutDay.id,
+          exercises: workoutDay.exercises,
+          exerciseIndex: 0,
+        },
       });
     }
 
     if (input === "CHANGE") {
       const user = await prisma.user.findUnique({
         where: { phone },
-        include: { planHistory: { where: { endDate: null }, include: { plan: true } } },
+        include: {
+          planHistory: { where: { endDate: null }, include: { plan: true } },
+        },
       });
-      if (!user) return NextResponse.json({ reply: "Phone not found. Text JOIN to sign up.", nextState: "idle" });
+      if (!user)
+        return NextResponse.json({
+          reply: "Phone not found. Text JOIN to sign up.",
+          nextState: "idle",
+        });
 
       const currentPlan = user.planHistory[0]?.plan;
       const allPlans = await prisma.workoutPlan.findMany();
-      const list = allPlans.map((p, i) => `${i + 1}. ${p.name}${currentPlan?.id === p.id ? " (current)" : ""}`).join("\n");
+      const list = allPlans
+        .map(
+          (p, i) =>
+            `${i + 1}. ${p.name}${currentPlan?.id === p.id ? " (current)" : ""}`,
+        )
+        .join("\n");
 
       return NextResponse.json({
         reply: `You're on ${currentPlan?.name ?? "no plan"}.\nPick a new split:\n\n${list}`,
@@ -680,7 +856,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ reply: "Type JOIN to sign up or HERE to start your workout.", nextState: "idle" });
+    return NextResponse.json({
+      reply: "Type JOIN to sign up or HERE to start your workout.",
+      nextState: "idle",
+    });
   }
 
   if (state === "onboarding_name") {
@@ -696,9 +875,16 @@ export async function POST(req: NextRequest) {
 
   if (state === "onboarding_plan") {
     const choice = parseInt(input);
-    const { name, plans } = context as { name: string; plans: { id: string; name: string }[] };
+    const { name, plans } = context as {
+      name: string;
+      plans: { id: string; name: string }[];
+    };
     if (!choice || choice < 1 || choice > plans.length) {
-      return NextResponse.json({ reply: `Pick a number between 1 and ${plans.length}.`, nextState: "onboarding_plan", context });
+      return NextResponse.json({
+        reply: `Pick a number between 1 and ${plans.length}.`,
+        nextState: "onboarding_plan",
+        context,
+      });
     }
     const plan = plans[choice - 1];
     const user = await prisma.user.create({
@@ -713,8 +899,14 @@ export async function POST(req: NextRequest) {
 
   if (state === "workout_ready") {
     if (input === "START") {
-      const { exercises, userId, workoutDayId } = context as { exercises: Exercise[]; userId: string; workoutDayId: string };
-      const session = await prisma.workoutSession.create({ data: { userId, workoutDayId } });
+      const { exercises, userId, workoutDayId } = context as {
+        exercises: Exercise[];
+        userId: string;
+        workoutDayId: string;
+      };
+      const session = await prisma.workoutSession.create({
+        data: { userId, workoutDayId },
+      });
       const first = exercises[0];
       const lastSets = await getLastSets(userId, first.id);
       return NextResponse.json({
@@ -723,7 +915,11 @@ export async function POST(req: NextRequest) {
         context: { ...context, sessionId: session.id, exerciseIndex: 0 },
       });
     }
-    return NextResponse.json({ reply: "Type START when you're ready.", nextState: "workout_ready", context });
+    return NextResponse.json({
+      reply: "Type START when you're ready.",
+      nextState: "workout_ready",
+      context,
+    });
   }
 
   if (state === "exercise_active") {
@@ -737,7 +933,12 @@ export async function POST(req: NextRequest) {
 
     if (input === "SKIP") {
       await prisma.exerciseLog.create({
-        data: { sessionId, plannedExerciseId: current.id, order: exerciseIndex + 1, skipped: true },
+        data: {
+          sessionId,
+          plannedExerciseId: current.id,
+          order: exerciseIndex + 1,
+          skipped: true,
+        },
       });
     } else {
       const sets = parseSets(text);
@@ -775,7 +976,10 @@ export async function POST(req: NextRequest) {
         return `• ${name} — ${setStr}`;
       });
 
-      const totalSets = logs.reduce((sum, log) => sum + (log.skipped ? 0 : log.sets.length), 0);
+      const totalSets = logs.reduce(
+        (sum, log) => sum + (log.skipped ? 0 : log.sets.length),
+        0,
+      );
       const doneCount = logs.filter((l) => !l.skipped).length;
 
       const reply = [
@@ -809,12 +1013,19 @@ export async function POST(req: NextRequest) {
     const choice = parseInt(input);
     if (!choice || choice < 1 || choice > allPlans.length) {
       const list = allPlans.map((p, i) => `${i + 1}. ${p.name}`).join("\n");
-      return NextResponse.json({ reply: `Pick a number:\n\n${list}`, nextState: "changing_plan", context });
+      return NextResponse.json({
+        reply: `Pick a number:\n\n${list}`,
+        nextState: "changing_plan",
+        context,
+      });
     }
 
     const newPlan = allPlans[choice - 1];
 
-    await prisma.userPlan.update({ where: { id: currentUserPlanId }, data: { endDate: new Date() } });
+    await prisma.userPlan.update({
+      where: { id: currentUserPlanId },
+      data: { endDate: new Date() },
+    });
     await prisma.userPlan.create({
       data: {
         user: { connect: { phone } },
@@ -840,17 +1051,25 @@ export async function POST(req: NextRequest) {
 These two features are already included in the full `app/api/message/route.ts` above. Key details:
 
 **Robust set parsing** — normalizes before parsing so `150 x 10`, `150X10`, and `150x10,160x8` all work:
+
 ```ts
-const normalized = text.toLowerCase().replace(/,/g, " ").replace(/\s*x\s*/g, "x").trim();
+const normalized = text
+  .toLowerCase()
+  .replace(/,/g, " ")
+  .replace(/\s*x\s*/g, "x")
+  .trim();
 ```
+
 If parsing fails, the bot replies with instructions instead of crashing.
 
 **Last session numbers** — `getLastSets()` queries the most recent `ExerciseLog` for that user + exercise and shows it above the input prompt:
+
 ```
 Bench Press — 4 sets x 10 reps
 Last time: 150x10 160x8 170x6
 Log your sets or type SKIP
 ```
+
 This gives athletes a target to beat every session.
 
 ---
@@ -860,13 +1079,15 @@ This gives athletes a target to beat every session.
 Shows all past workouts for the current user. Navigate week by week. Tap any session to expand and see the sets.
 
 **`app/api/sessions/route.ts` (full file):**
+
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const phone = req.nextUrl.searchParams.get("phone");
-  if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
+  if (!phone)
+    return NextResponse.json({ error: "phone required" }, { status: 400 });
 
   const sessions = await prisma.workoutSession.findMany({
     where: { user: { phone } },
@@ -888,6 +1109,7 @@ export async function GET(req: NextRequest) {
 ```
 
 **`app/history/page.tsx` (full file):**
+
 ```tsx
 "use client";
 
@@ -925,7 +1147,10 @@ export default function HistoryPage() {
 
   useEffect(() => {
     const saved = localStorage.getItem("it_phone");
-    if (!saved) { setLoading(false); return; }
+    if (!saved) {
+      setLoading(false);
+      return;
+    }
     setPhone(saved);
     fetch(`/api/sessions?phone=${encodeURIComponent(saved)}`)
       .then((r) => r.json())
@@ -953,21 +1178,30 @@ export default function HistoryPage() {
     setExpanded(null);
   }
 
-  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const weekLabel =
-    weekOffset === 0 ? "This Week"
-    : weekOffset === -1 ? "Last Week"
-    : `${fmt(weekStart)} – ${fmt(weekEnd)}`;
+    weekOffset === 0
+      ? "This Week"
+      : weekOffset === -1
+        ? "Last Week"
+        : `${fmt(weekStart)} – ${fmt(weekEnd)}`;
 
   if (loading)
-    return <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">
+        Loading...
+      </div>
+    );
 
   if (!phone) {
     return (
       <div className="flex items-center justify-center min-h-screen text-sm text-center px-4">
         <div>
           <p className="mb-2">No phone found.</p>
-          <Link href="/" className="underline">Go back and sign in first.</Link>
+          <Link href="/" className="underline">
+            Go back and sign in first.
+          </Link>
         </div>
       </div>
     );
@@ -977,7 +1211,9 @@ export default function HistoryPage() {
     <div className="flex items-center justify-center h-screen bg-background overflow-hidden">
       <div className="flex flex-col w-full max-w-sm h-full sm:h-175 sm:border sm:rounded-3xl overflow-hidden sm:shadow-md">
         <div className="px-4 py-3 border-b flex items-center justify-between">
-          <Link href="/" className="text-xs text-muted-foreground">← Back</Link>
+          <Link href="/" className="text-xs text-muted-foreground">
+            ← Back
+          </Link>
           <p className="font-semibold text-sm">Workout History</p>
           <div className="w-10" />
         </div>
@@ -1002,32 +1238,45 @@ export default function HistoryPage() {
 
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
           {weekSessions.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center mt-8">No workouts this week.</p>
+            <p className="text-sm text-muted-foreground text-center mt-8">
+              No workouts this week.
+            </p>
           )}
           {weekSessions.map((session) => {
             const isOpen = expanded === session.id;
             const done = session.exercises.filter((e) => !e.skipped).length;
             const skipped = session.exercises.filter((e) => e.skipped).length;
             const date = new Date(session.date).toLocaleDateString("en-US", {
-              weekday: "short", month: "short", day: "numeric",
+              weekday: "short",
+              month: "short",
+              day: "numeric",
             });
 
             return (
-              <div key={session.id} className="border rounded-2xl overflow-hidden">
+              <div
+                key={session.id}
+                className="border rounded-2xl overflow-hidden"
+              >
                 <button
                   onClick={() => setExpanded(isOpen ? null : session.id)}
                   className="w-full px-4 py-3 flex items-center justify-between text-left"
                 >
                   <div>
-                    <p className="text-sm font-medium">{session.workoutDay.name}</p>
-                    <p className="text-xs text-muted-foreground">{session.workoutDay.plan.name}</p>
+                    <p className="text-sm font-medium">
+                      {session.workoutDay.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {session.workoutDay.plan.name}
+                    </p>
                     <p className="text-xs text-muted-foreground">{date}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-muted-foreground">
                       {done} done{skipped > 0 ? `, ${skipped} skipped` : ""}
                     </p>
-                    <p className="text-xs text-muted-foreground">{isOpen ? "▲" : "▼"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isOpen ? "▲" : "▼"}
+                    </p>
                   </div>
                 </button>
 
@@ -1037,11 +1286,17 @@ export default function HistoryPage() {
                       <div key={ex.id}>
                         <p className="text-xs font-semibold">
                           {ex.plannedExercise.name}
-                          {ex.skipped && <span className="ml-2 text-muted-foreground font-normal">skipped</span>}
+                          {ex.skipped && (
+                            <span className="ml-2 text-muted-foreground font-normal">
+                              skipped
+                            </span>
+                          )}
                         </p>
                         {!ex.skipped && ex.sets.length > 0 && (
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {ex.sets.map((s) => `${s.weight}x${s.reps}`).join("  ")}
+                            {ex.sets
+                              .map((s) => `${s.weight}x${s.reps}`)
+                              .join("  ")}
                           </p>
                         )}
                       </div>
@@ -1059,6 +1314,7 @@ export default function HistoryPage() {
 ```
 
 **How it works:**
+
 - Reads phone from `localStorage` on mount — set when the user enters their number on the chat page
 - Fetches all sessions once, then filters client-side by week on each navigation
 - `← Back` disabled if no sessions exist before current window; `Next →` hidden when already on current week
@@ -1070,6 +1326,7 @@ export default function HistoryPage() {
 When a phone is entered on the chat page, `GET /api/user` checks the DB immediately and greets returning users by name.
 
 **`app/api/user/route.ts` (full file):**
+
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -1092,14 +1349,16 @@ Returns the user object if found, `{ user: null }` if not. The chat page uses th
 Since workouts depend on the real day of the week, testing all 6 days would require waiting 6 days. The toolbar above the phone frame lets you pick any day instantly.
 
 `simDay` is passed with every API message:
+
 ```ts
-body: JSON.stringify({ phone, text, state, context, simDay })
+body: JSON.stringify({ phone, text, state, context, simDay });
 ```
 
 The API uses it instead of `new Date().getDay()`:
+
 ```ts
 function getTodayWorkoutDay(simDay?: number): number {
-  const map = { 1:1, 2:2, 3:3, 4:4, 5:5, 6:6, 0:0 };
+  const map = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 0: 0 };
   const day = simDay !== undefined ? simDay : new Date().getDay();
   return map[day];
 }
@@ -1112,9 +1371,15 @@ function getTodayWorkoutDay(simDay?: number): number {
 **History — show plan name per session**
 
 The sessions API includes the plan via nested relation:
+
 ```ts
-workoutDay: { include: { plan: true } }
+workoutDay: {
+  include: {
+    plan: true;
+  }
+}
 ```
+
 Each session card shows three lines: day name, plan name, and date.
 
 **CHANGE command — switch plans**
@@ -1136,13 +1401,15 @@ A **Commands** button in the dev toolbar opens a popover listing all available c
 Shows the heaviest weight ever lifted per exercise, across all plans and all time.
 
 **`app/api/prs/route.ts` (full file):**
+
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const phone = req.nextUrl.searchParams.get("phone");
-  if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
+  if (!phone)
+    return NextResponse.json({ error: "phone required" }, { status: 400 });
 
   const sets = await prisma.setLog.findMany({
     where: {
@@ -1161,7 +1428,10 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  const prMap = new Map<string, { weight: number; reps: number; date: string }>();
+  const prMap = new Map<
+    string,
+    { weight: number; reps: number; date: string }
+  >();
 
   for (const set of sets) {
     const name = set.exerciseLog.plannedExercise.name;
@@ -1186,6 +1456,7 @@ export async function GET(req: NextRequest) {
 **Why group by exercise name?** PRs are personal — the name is what matters, not which plan or day. Switching from Arnold to Ronnie doesn't reset your Bench Press PR.
 
 **`app/prs/page.tsx` (full file):**
+
 ```tsx
 "use client";
 
@@ -1201,7 +1472,10 @@ export default function PRsPage() {
 
   useEffect(() => {
     const saved = localStorage.getItem("it_phone");
-    if (!saved) { setLoading(false); return; }
+    if (!saved) {
+      setLoading(false);
+      return;
+    }
     setPhone(saved);
     fetch(`/api/prs?phone=${encodeURIComponent(saved)}`)
       .then((r) => r.json())
@@ -1209,14 +1483,21 @@ export default function PRsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">Loading...</div>;
+  if (loading)
+    return (
+      <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">
+        Loading...
+      </div>
+    );
 
   if (!phone) {
     return (
       <div className="flex items-center justify-center h-screen text-sm text-center px-4">
         <div>
           <p className="mb-2">No phone found.</p>
-          <Link href="/" className="underline">Go back and sign in first.</Link>
+          <Link href="/" className="underline">
+            Go back and sign in first.
+          </Link>
         </div>
       </div>
     );
@@ -1226,24 +1507,35 @@ export default function PRsPage() {
     <div className="flex items-center justify-center h-screen bg-background overflow-hidden">
       <div className="flex flex-col w-full max-w-sm h-full sm:h-175 sm:border sm:rounded-3xl overflow-hidden sm:shadow-md">
         <div className="px-4 py-3 border-b flex items-center justify-between">
-          <Link href="/" className="text-xs text-muted-foreground">← Back</Link>
+          <Link href="/" className="text-xs text-muted-foreground">
+            ← Back
+          </Link>
           <p className="font-semibold text-sm">Personal Records</p>
           <div className="w-10" />
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
           {prs.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center mt-8">No PRs yet. Go lift!</p>
+            <p className="text-sm text-muted-foreground text-center mt-8">
+              No PRs yet. Go lift!
+            </p>
           )}
           {prs.map((pr) => {
             const date = new Date(pr.date).toLocaleDateString("en-US", {
-              month: "short", day: "numeric", year: "numeric",
+              month: "short",
+              day: "numeric",
+              year: "numeric",
             });
             return (
-              <div key={pr.name} className="flex items-center justify-between py-2 border-b last:border-0">
+              <div
+                key={pr.name}
+                className="flex items-center justify-between py-2 border-b last:border-0"
+              >
                 <p className="text-sm font-medium flex-1 pr-4">{pr.name}</p>
                 <div className="text-right shrink-0">
-                  <p className="text-sm font-semibold">{pr.weight}lbs × {pr.reps}</p>
+                  <p className="text-sm font-semibold">
+                    {pr.weight}lbs × {pr.reps}
+                  </p>
                   <p className="text-xs text-muted-foreground">{date}</p>
                 </div>
               </div>
@@ -1263,6 +1555,7 @@ export default function PRsPage() {
 A `/email` page styled like a real coach email. Shows four metrics for the current month: attendance, top 3 strength improvements, total volume lifted, and current streak.
 
 **`app/api/report/route.ts` (full file):**
+
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -1286,10 +1579,12 @@ function getPossibleTrainingDays(start: Date, end: Date) {
 
 export async function GET(req: NextRequest) {
   const phone = req.nextUrl.searchParams.get("phone");
-  if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
+  if (!phone)
+    return NextResponse.json({ error: "phone required" }, { status: 400 });
 
   const user = await prisma.user.findUnique({ where: { phone } });
-  if (!user) return NextResponse.json({ error: "user not found" }, { status: 404 });
+  if (!user)
+    return NextResponse.json({ error: "user not found" }, { status: 404 });
 
   const { start, end } = getMonthRange();
 
@@ -1331,13 +1626,18 @@ export async function GET(req: NextRequest) {
 
   const improvements = Array.from(exerciseMap.entries())
     .map(([name, dayMap]) => {
-      const days = Array.from(dayMap.entries()).sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime());
+      const days = Array.from(dayMap.entries()).sort(
+        (a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime(),
+      );
       if (days.length < 2) return null;
       const first = days[0][1];
       const last = days[days.length - 1][1];
       return { name, from: first, to: last, delta: last - first };
     })
-    .filter((e): e is { name: string; from: number; to: number; delta: number } => e !== null && e.delta > 0)
+    .filter(
+      (e): e is { name: string; from: number; to: number; delta: number } =>
+        e !== null && e.delta > 0,
+    )
     .sort((a, b) => b.delta - a.delta)
     .slice(0, 3);
 
@@ -1351,7 +1651,10 @@ export async function GET(req: NextRequest) {
   let streak = 0;
   const cursor = new Date();
   while (true) {
-    if (cursor.getDay() === 0) { cursor.setDate(cursor.getDate() - 1); continue; }
+    if (cursor.getDay() === 0) {
+      cursor.setDate(cursor.getDate() - 1);
+      continue;
+    }
     if (sessionDays.has(cursor.toDateString())) {
       streak++;
       cursor.setDate(cursor.getDate() - 1);
@@ -1360,7 +1663,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const monthName = start.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const monthName = start.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 
   return NextResponse.json({
     name: user.name,
@@ -1374,6 +1680,7 @@ export async function GET(req: NextRequest) {
 ```
 
 **`app/email/page.tsx` (full file):**
+
 ```tsx
 "use client";
 
@@ -1413,7 +1720,10 @@ export default function EmailPage() {
 
   useEffect(() => {
     const saved = localStorage.getItem("it_phone");
-    if (!saved) { setLoading(false); return; }
+    if (!saved) {
+      setLoading(false);
+      return;
+    }
     setPhone(saved);
     fetch(`/api/report?phone=${encodeURIComponent(saved)}`)
       .then((r) => r.json())
@@ -1421,14 +1731,21 @@ export default function EmailPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">Loading...</div>;
+  if (loading)
+    return (
+      <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">
+        Loading...
+      </div>
+    );
 
   if (!phone || !report) {
     return (
       <div className="flex items-center justify-center h-screen text-sm text-center px-4">
         <div>
           <p className="mb-2">No data found.</p>
-          <Link href="/" className="underline">Go back and sign in first.</Link>
+          <Link href="/" className="underline">
+            Go back and sign in first.
+          </Link>
         </div>
       </div>
     );
@@ -1437,40 +1754,64 @@ export default function EmailPage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 py-10 px-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg overflow-hidden">
-
         <div className="bg-gray-900 px-8 py-6 text-white">
-          <p className="text-xs uppercase tracking-widest text-gray-400 mb-1">Iron Temple</p>
+          <p className="text-xs uppercase tracking-widest text-gray-400 mb-1">
+            Iron Temple
+          </p>
           <h1 className="text-xl font-bold">Monthly Progress Report</h1>
           <p className="text-sm text-gray-400 mt-1">{report.monthName}</p>
         </div>
 
         <div className="px-8 py-6 flex flex-col gap-6">
-          <p className="text-sm text-gray-600">Hey {report.name}, here's how your month looked.</p>
+          <p className="text-sm text-gray-600">
+            Hey {report.name}, here's how your month looked.
+          </p>
 
           <div>
-            <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Attendance</p>
+            <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">
+              Attendance
+            </p>
             <p className="text-3xl font-bold">
               {report.attendance.days}
-              <span className="text-lg font-normal text-gray-400"> / {report.attendance.possible} days</span>
+              <span className="text-lg font-normal text-gray-400">
+                {" "}
+                / {report.attendance.possible} days
+              </span>
             </p>
-            <p className="text-sm text-gray-500 mt-1">{attendanceMessage(report.attendance.days, report.attendance.possible)}</p>
+            <p className="text-sm text-gray-500 mt-1">
+              {attendanceMessage(
+                report.attendance.days,
+                report.attendance.possible,
+              )}
+            </p>
           </div>
 
           {report.improvements.length > 0 && (
             <div>
-              <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Top Improvements</p>
+              <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">
+                Top Improvements
+              </p>
               <div className="flex flex-col gap-2">
                 {report.improvements.map((imp, i) => (
-                  <div key={imp.name} className="flex items-center justify-between">
+                  <div
+                    key={imp.name}
+                    className="flex items-center justify-between"
+                  >
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 w-4">{i + 1}.</span>
+                      <span className="text-xs text-gray-400 w-4">
+                        {i + 1}.
+                      </span>
                       <span className="text-sm font-medium">{imp.name}</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-sm text-gray-400">{imp.from}lbs</span>
+                      <span className="text-sm text-gray-400">
+                        {imp.from}lbs
+                      </span>
                       <span className="text-sm text-gray-400 mx-1">→</span>
                       <span className="text-sm font-semibold">{imp.to}lbs</span>
-                      <span className="text-xs text-green-600 ml-2">+{imp.delta}lbs</span>
+                      <span className="text-xs text-green-600 ml-2">
+                        +{imp.delta}lbs
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -1480,31 +1821,50 @@ export default function EmailPage() {
 
           {report.improvements.length === 0 && (
             <div>
-              <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Top Improvements</p>
-              <p className="text-sm text-gray-500">Log more sessions to see your strength progress.</p>
+              <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">
+                Top Improvements
+              </p>
+              <p className="text-sm text-gray-500">
+                Log more sessions to see your strength progress.
+              </p>
             </div>
           )}
 
           <div>
-            <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Total Volume</p>
+            <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">
+              Total Volume
+            </p>
             <p className="text-3xl font-bold">
               {report.totalVolume.toLocaleString()}
-              <span className="text-lg font-normal text-gray-400"> lbs lifted</span>
+              <span className="text-lg font-normal text-gray-400">
+                {" "}
+                lbs lifted
+              </span>
             </p>
           </div>
 
           <div>
-            <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Current Streak</p>
+            <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">
+              Current Streak
+            </p>
             <p className="text-3xl font-bold">
               {report.streak}
-              <span className="text-lg font-normal text-gray-400"> {report.streak === 1 ? "day" : "days"}</span>
+              <span className="text-lg font-normal text-gray-400">
+                {" "}
+                {report.streak === 1 ? "day" : "days"}
+              </span>
             </p>
-            <p className="text-sm text-gray-500 mt-1">{streakMessage(report.streak)}</p>
+            <p className="text-sm text-gray-500 mt-1">
+              {streakMessage(report.streak)}
+            </p>
           </div>
 
           <div className="border-t pt-4">
             <p className="text-xs text-gray-400 text-center">
-              Iron Temple · Keep showing up · <Link href="/" className="underline">Back to chat</Link>
+              Iron Temple · Keep showing up ·{" "}
+              <Link href="/" className="underline">
+                Back to chat
+              </Link>
             </p>
           </div>
         </div>
@@ -1515,6 +1875,7 @@ export default function EmailPage() {
 ```
 
 **How the report works:**
+
 - **Attendance** — counts unique session days this month vs all possible Mon–Sat days so far
 - **Top 3 Improvements** — groups sets by exercise → tracks max weight per calendar day → compares first day vs last day. Only shows exercises where `delta > 0`
 - **Total Volume** — sum of `weight × reps` across every set this month
@@ -1531,6 +1892,7 @@ npx tsx prisma/simulate.ts
 ```
 
 **`prisma/simulate.ts` (full file):**
+
 ```ts
 import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
@@ -1540,46 +1902,46 @@ const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL! });
 const prisma = new PrismaClient({ adapter });
 
 const WEIGHTS: Record<string, { base: number; inc: number }> = {
-  "Deadlift":                           { base: 315, inc: 20 },
-  "Barbell Row":                         { base: 185, inc: 10 },
-  "T-Bar Row":                           { base: 135, inc: 10 },
-  "One Arm Dumbbell Row":                { base: 100, inc: 10 },
-  "Standing EZ Bar Curl 21s":            { base: 65,  inc: 5  },
-  "One Arm Dumbbell Preacher Curl":      { base: 35,  inc: 2.5 },
-  "Seated Dumbbell Hammer Curl":         { base: 40,  inc: 2.5 },
-  "Seated Calf Raise":                   { base: 135, inc: 10 },
-  "Standing Calf Raise":                 { base: 185, inc: 10 },
-  "Leg Press Calf Raise":                { base: 270, inc: 10 },
-  "Dumbbell Bench Press":                { base: 80,  inc: 5  },
-  "Incline Dumbbell Bench Press":        { base: 65,  inc: 5  },
-  "Flat Dumbbell Fly":                   { base: 40,  inc: 2.5 },
-  "Skull Crusher":                       { base: 85,  inc: 5  },
-  "Dumbbell Overhead Triceps Extension": { base: 55,  inc: 2.5 },
-  "Dumbbell Kickback":                   { base: 25,  inc: 2.5 },
-  "Barbell Back Squat":                  { base: 275, inc: 20 },
-  "Leg Press":                           { base: 405, inc: 20 },
-  "Lying Leg Curl":                      { base: 100, inc: 5  },
-  "Seated Leg Curl":                     { base: 100, inc: 5  },
-  "Walking Lunges":                      { base: 95,  inc: 10 },
-  "Seated Barbell Shoulder Press":       { base: 135, inc: 10 },
-  "Machine Side Raise":                  { base: 45,  inc: 5  },
-  "Dumbbell Front Raise":                { base: 35,  inc: 2.5 },
-  "Standing Cable Reverse Fly":          { base: 30,  inc: 2.5 },
-  "Bent Over Cable Reverse Fly":         { base: 25,  inc: 2.5 },
-  "Behind The Back Barbell Shrug":       { base: 225, inc: 10 },
-  "Pull Up":                             { base: 0,   inc: 10 },
-  "Lat Pulldown":                        { base: 130, inc: 10 },
-  "Seated Cable Row":                    { base: 140, inc: 10 },
-  "Barbell Bench Press":                 { base: 185, inc: 10 },
-  "Incline Barbell Bench Press":         { base: 155, inc: 10 },
+  Deadlift: { base: 315, inc: 20 },
+  "Barbell Row": { base: 185, inc: 10 },
+  "T-Bar Row": { base: 135, inc: 10 },
+  "One Arm Dumbbell Row": { base: 100, inc: 10 },
+  "Standing EZ Bar Curl 21s": { base: 65, inc: 5 },
+  "One Arm Dumbbell Preacher Curl": { base: 35, inc: 2.5 },
+  "Seated Dumbbell Hammer Curl": { base: 40, inc: 2.5 },
+  "Seated Calf Raise": { base: 135, inc: 10 },
+  "Standing Calf Raise": { base: 185, inc: 10 },
+  "Leg Press Calf Raise": { base: 270, inc: 10 },
+  "Dumbbell Bench Press": { base: 80, inc: 5 },
+  "Incline Dumbbell Bench Press": { base: 65, inc: 5 },
+  "Flat Dumbbell Fly": { base: 40, inc: 2.5 },
+  "Skull Crusher": { base: 85, inc: 5 },
+  "Dumbbell Overhead Triceps Extension": { base: 55, inc: 2.5 },
+  "Dumbbell Kickback": { base: 25, inc: 2.5 },
+  "Barbell Back Squat": { base: 275, inc: 20 },
+  "Leg Press": { base: 405, inc: 20 },
+  "Lying Leg Curl": { base: 100, inc: 5 },
+  "Seated Leg Curl": { base: 100, inc: 5 },
+  "Walking Lunges": { base: 95, inc: 10 },
+  "Seated Barbell Shoulder Press": { base: 135, inc: 10 },
+  "Machine Side Raise": { base: 45, inc: 5 },
+  "Dumbbell Front Raise": { base: 35, inc: 2.5 },
+  "Standing Cable Reverse Fly": { base: 30, inc: 2.5 },
+  "Bent Over Cable Reverse Fly": { base: 25, inc: 2.5 },
+  "Behind The Back Barbell Shrug": { base: 225, inc: 10 },
+  "Pull Up": { base: 0, inc: 10 },
+  "Lat Pulldown": { base: 130, inc: 10 },
+  "Seated Cable Row": { base: 140, inc: 10 },
+  "Barbell Bench Press": { base: 185, inc: 10 },
+  "Incline Barbell Bench Press": { base: 155, inc: 10 },
 };
 
 function getSimDates(): { date: Date; weekIndex: number }[] {
   const weekStarts = [
     new Date(2026, 4, 19),
     new Date(2026, 4, 26),
-    new Date(2026, 5,  2),
-    new Date(2026, 5,  9),
+    new Date(2026, 5, 2),
+    new Date(2026, 5, 9),
   ];
   const today = new Date(2026, 5, 12);
   const result: { date: Date; weekIndex: number }[] = [];
@@ -1603,14 +1965,17 @@ async function main() {
         where: { endDate: null },
         include: {
           plan: {
-            include: { days: { include: { exercises: { orderBy: { order: "asc" } } } } },
+            include: {
+              days: { include: { exercises: { orderBy: { order: "asc" } } } },
+            },
           },
         },
       },
     },
   });
 
-  if (!user) throw new Error("User not found — update the phone number in this script");
+  if (!user)
+    throw new Error("User not found — update the phone number in this script");
   const activePlan = user.planHistory[0];
   if (!activePlan) throw new Error("No active plan found for user");
 
@@ -1628,7 +1993,10 @@ async function main() {
   let skipped = 0;
 
   for (const { date, weekIndex } of getSimDates()) {
-    if (existingDates.has(date.toDateString())) { skipped++; continue; }
+    if (existingDates.has(date.toDateString())) {
+      skipped++;
+      continue;
+    }
 
     const workoutDayNumber = date.getDay();
     const workoutDay = dayMap.get(workoutDayNumber);
@@ -1643,17 +2011,29 @@ async function main() {
       const weight = cfg.base + weekIndex * cfg.inc;
 
       const log = await prisma.exerciseLog.create({
-        data: { sessionId: session.id, plannedExerciseId: exercise.id, order: exercise.order, skipped: false },
+        data: {
+          sessionId: session.id,
+          plannedExerciseId: exercise.id,
+          order: exercise.order,
+          skipped: false,
+        },
       });
 
       for (let setNum = 1; setNum <= exercise.targetSets; setNum++) {
         await prisma.setLog.create({
-          data: { exerciseLogId: log.id, setNumber: setNum, weight, reps: exercise.targetReps },
+          data: {
+            exerciseLogId: log.id,
+            setNumber: setNum,
+            weight,
+            reps: exercise.targetReps,
+          },
         });
       }
     }
 
-    console.log(`✓ ${date.toDateString()} — ${workoutDay.name} (week ${weekIndex + 1})`);
+    console.log(
+      `✓ ${date.toDateString()} — ${workoutDay.name} (week ${weekIndex + 1})`,
+    );
     created++;
   }
 
@@ -1661,7 +2041,10 @@ async function main() {
 }
 
 main()
-  .catch((e) => { console.error(e); process.exit(1); })
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
   .finally(() => prisma.$disconnect());
 ```
 
@@ -1702,6 +2085,7 @@ const logs = await prisma.exerciseLog.findMany({
 ```
 
 **What the user sees:**
+
 ```
 Workout complete! Great work 💪
 
