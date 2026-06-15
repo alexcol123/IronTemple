@@ -210,11 +210,35 @@ export async function POST(req: NextRequest) {
 
     const nextIndex = exerciseIndex + 1;
     if (nextIndex >= exercises.length) {
-      return NextResponse.json({
-        reply: `Workout complete! Great work 💪\nType HERE next time you're at the gym.`,
-        nextState: "idle",
-        context: {},
+      const logs = await prisma.exerciseLog.findMany({
+        where: { sessionId },
+        include: { sets: { orderBy: { setNumber: "asc" } } },
+        orderBy: { order: "asc" },
       });
+
+      const lines = logs.map((log) => {
+        const ex = exercises.find((e) => e.id === log.plannedExerciseId);
+        const name = ex?.name ?? "Unknown";
+        if (log.skipped) return `• ${name} — SKIPPED`;
+        const setStr = log.sets.map((s) => `${s.weight}x${s.reps}`).join(" ");
+        return `• ${name} — ${setStr}`;
+      });
+
+      const totalSets = logs.reduce((sum, log) => sum + (log.skipped ? 0 : log.sets.length), 0);
+      const doneCount = logs.filter((l) => !l.skipped).length;
+
+      const reply = [
+        `Workout complete! Great work 💪`,
+        ``,
+        `Today's session:`,
+        ...lines,
+        ``,
+        `${doneCount} exercise${doneCount !== 1 ? "s" : ""} · ${totalSets} total sets`,
+        `See your full history → /history`,
+        `Type HERE next time you're at the gym.`,
+      ].join("\n");
+
+      return NextResponse.json({ reply, nextState: "idle", context: {} });
     }
 
     const next = exercises[nextIndex];

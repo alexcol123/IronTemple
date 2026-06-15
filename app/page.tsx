@@ -9,6 +9,20 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 
 type Message = { from: "bot" | "user"; text: string };
 
+function renderText(text: string) {
+  const parts = text.split(/(\/[a-z][a-z0-9-]*)/g);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    /^\/[a-z][a-z0-9-]*$/.test(part) ? (
+      <Link key={i} href={part} className="underline font-medium">
+        {part}
+      </Link>
+    ) : (
+      part
+    )
+  );
+}
+
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const INITIAL_MESSAGE: Message = {
@@ -144,7 +158,7 @@ export default function Page() {
                       : "bg-muted text-foreground rounded-bl-sm"
                   }`}
                 >
-                  {msg.text}
+                  {renderText(msg.text)}
                 </div>
               </div>
             ))}
