@@ -3,6 +3,7 @@ import { PrismaClient } from "../app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { ARNOLD_SPLIT } from "../lib/data/arnold";
 import { RONNIE_SPLIT } from "../lib/data/ronnie";
+import { FOUNDER_SPLIT } from "../lib/data/founder";
 
 const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -13,6 +14,7 @@ async function seed() {
   const plans = [
     { name: "Arnold Split", days: ARNOLD_SPLIT },
     { name: "Ronnie Coleman Split", days: RONNIE_SPLIT },
+    { name: "Founder Split", days: FOUNDER_SPLIT },
   ];
 
   for (const plan of plans) {
