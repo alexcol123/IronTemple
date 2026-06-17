@@ -136,6 +136,29 @@ Personal trainers are the bridge between Phase 1 (gyms) and Phase 3 (influencers
 
 Three creators, one gym number, three revenue streams.
 
+## Advisor Pitch Summary
+
+**The concept:** Athletes pay $15/month to follow a fitness creator's workout program and log their sessions by text. Think OnlyFans but for workout programs.
+
+**Base split:** $15/month → $7.50 to platform, $7.50 to creator. Always.
+
+**The recruiter layer:**
+
+Every member has a permanent "who recruited me" tag. The person who brought them onto the platform earns **$2/month flat, forever**, even if the member switches to a different creator later. That $2 comes out of the current creator's $7.50 — platform never touches it.
+
+- Member follows same person who recruited them → recruiter/creator keeps full $7.50
+- Member switches to a new creator → new creator keeps $5.50, original recruiter keeps $2
+- Gym whose phone number was used gets $0.50–$1 only while the member is active there
+
+**Why trainers become our sales force:**
+
+A personal trainer at a gym gets a code (e.g. `JOINMIKE`). Every client who signs up through that code pays Mike $2/month forever — even if they move states and follow Sam Sulek instead. 80 clients = $160/month passive, for life. Mike stops thinking about it as a gym tool. He starts promoting it to everyone he's ever trained because every signup is permanent recurring income.
+
+**Open question for advisor:**
+> *Is the $2 recruiter fee sustainable long term, or should we cap it after X months or X dollars — similar to how OnlyFans capped their referral program after it got too expensive?*
+
+---
+
 ## What needs to be built next
 The pitch requires Stripe recurring billing before you can demo it live:
 - Stripe subscription infrastructure
