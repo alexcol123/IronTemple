@@ -171,6 +171,45 @@ The pitch requires Stripe recurring billing before you can demo it live:
 
 ## Feature Backlog
 
+### Onboarding Flow — Goal-Based Plan Selection
+
+During onboarding, before anything else, ask the athlete one question:
+
+> *"What's your goal?"*
+> *1. Lose Weight*
+> *2. Build Muscle*
+> *3. Get Stronger*
+> *4. General Fitness*
+
+Auto-assign the most popular split for that goal — no decision fatigue, they start tomorrow.
+
+**Goal → Default Plan mapping:**
+
+| Goal | Default Plan | Why |
+|------|-------------|-----|
+| Lose Weight | Founder Split | Cardio days built in |
+| Build Muscle | Arnold Split | Classic hypertrophy volume |
+| Get Stronger | 5/3/1 style | Heavy compounds, low reps (needs to be built) |
+| General Fitness | 3-Day Full Body | Simple, sustainable (needs to be built) |
+
+**At the bottom of Day 1's first workout, add:**
+> *"Want a custom split? Build your own → /builder"*
+
+This links to the `/builder` page where they can create a fully custom program on a 7-day calendar — pick exercises per day, set sets/reps, reorder with drag.
+
+**Why this matters:**
+- Solo athletes can use the app without a trainer or gym — direct-to-consumer market unlocked
+- Athletes who build their own plan are more invested and less likely to churn
+- The `/builder` page is also the creator dashboard — trainers use the same page to build the program they sell to subscribers
+- Lowers the barrier for gym owners: instead of emailing us a PDF, they log in and build it themselves
+
+**Architecture:**
+- Onboarding question stored as `goal` on `User` model
+- Goal → planId mapping handled server-side at account creation
+- Custom plans created via `/builder` stored as a `WorkoutPlan` row owned by that user
+
+---
+
 ### Onboarding Flow — Missed Session Preference
 During onboarding, after a user picks their plan, ask them how to handle missed sessions. Two messages:
 
