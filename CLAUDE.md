@@ -171,6 +171,97 @@ The pitch requires Stripe recurring billing before you can demo it live:
 
 ## Feature Backlog
 
+### Optional Public Username for the History Link
+
+Right now the history link (`/history/{userId}`) is private by accident — a UUID nobody could guess, only useful because it's sent directly to the person. Idea: let people optionally choose a public username (e.g. `cathyny25`) so they can share/brag about their progress with a memorable link instead of a random ID.
+
+**Key distinction — this is opt-in, not a replacement:**
+- No username set → private UUID link works exactly as it does today, nothing changes
+- Username set → creates a *second*, public-facing URL (e.g. `/u/cathyny25`) pointing at the same underlying data
+
+This is a real shift from "private by obscurity" to "intentionally public identity" — that's the point, not a bug, but it should stay a conscious choice someone opts into, not something everyone gets exposed to by default.
+
+**What the public version should actually show:** probably not the same raw page as the private one — a highlight reel (PRs, streaks, maybe an auto-generated recap-card style summary) rather than a full dump of every set ever logged. Ties into the anonymous-handle idea from the TrackRep gamification notes (e.g. "Iron Monkey did the 29 pullup challenge") — a chosen username here could double as that same public identity later if leaderboards get built.
+
+**What it needs:** a unique `username` field on `User` (with collision/validation handling when someone picks one), plus a new public route separate from the existing private history page.
+
+**Do NOT build until:** the real workout content and progression system are done and tested — this is a nice-to-have distribution feature, not something blocking real usage.
+
+---
+
+### Plate Calculator + Equipment Type (advisor idea)
+
+**`PLATES 225`** → text command that returns the plate breakdown per side, assuming a standard 45lb bar (e.g. "Two 45lb plates on each side"). Removes gym-math friction when fatigued mid-session.
+
+Ties into the upcoming custom-workout builder: when a user builds their own exercise, they should be able to tag its equipment type — **Barbell / Dumbbell / Machine** — so tracking knows whether a number means total weight (Barbell, e.g. 225) or per-hand weight (Dumbbell, e.g. "90x" meaning 90 lbs each hand). Without this, a custom "Chest Press" exercise is ambiguous.
+
+**Do NOT build until:** the custom exercise/split builder exists — this is an extension of that feature, not standalone.
+
+---
+
+### Post-Workout Subjective Rating ("Coaching Notes")
+
+Right after the last exercise of a session, one optional question before the completion summary:
+
+> System: *"Session complete! Awesome job. Scale of 1-5, how did your joints and energy feel today?"*
+> User: `4`
+
+Stored alongside that session, surfaced on the private history page. The value: if lift numbers dip a few weeks later, the user can look back and see "oh, my energy was a 2 that whole week" — turning a mystery plateau into an explained one. Real coaches ask how it felt, not just what the numbers were.
+
+**Architecture:** one more field on `WorkoutSession` (e.g. `energyRating Int?`), one more state in the SMS flow after the last exercise completes, before the "Workout complete!" summary fires.
+
+---
+
+### Pre-Gym Behavioral Reminder (the "5:40 PM" prompt)
+
+The core idea: don't remind someone at 9am that they lift at 6pm — remind them ~20 minutes before their *actual usual time*, when it has the highest psychological impact (tying their shoes, driving to the gym).
+
+**Example:**
+> System (5:40pm, if their pattern is Monday 6pm): *"Hey Alex, iron time in 20 mins 🏋️ Today is Upper Body A and we're hunting a new PR on Dumbbell Bench. Reply HERE when you walk through the doors to unlock your targets."*
+
+**Why this template specifically works:** names the exact track (Upper Body A) and the exact lift to look forward to (creates anticipation), and gives one unambiguous call to action (reply HERE).
+
+**What it needs:**
+- Learning/storing each user's typical workout time pattern (derived from real `WorkoutSession` timestamps over a few weeks, not asked directly)
+- A per-user cron/scheduled job triggered ~20 min before their learned time
+- Pulling the next scheduled workout's specific exercises to personalize the "hunting a PR on X" line
+
+**Do NOT build until:** there's enough real session history per user to actually learn a pattern from — this needs real behavioral data, not a guess, same reasoning as everything else deferred pending real usage.
+
+---
+
+### Confirmed decisions (advisor independently agreed)
+
+Two things already decided earlier that the advisor's review independently confirmed, worth noting so they don't get re-litigated:
+- **No live rest-timer texts.** Pinging mid-set floods the thread, adds carrier lag risk, and risks people texting STOP out of frustration. Keep texts strictly bound to exercise start/end — this matches the earlier build decision, not a new one.
+- **No strict punctuation requirements in logging.** `parseSets()` already strips commas and splits on whitespace only — "150x10 160x8" and "150x10, 160x8" both already work today. No change needed, already satisfied.
+
+---
+
+### Macro Logging (MACROS / FOOD command)
+
+A standalone command, separate from workout logging, that tracks daily macros and updates the private web history link.
+
+**Two logging modes:**
+
+1. **Full daily log at once:**
+   > User: `Macros 180p 200c 70f`
+   > System: *"Logged: 180g Protein, 200g Carbs, 70g Fat. Total calories: 2,150. You are 20g away from your daily protein target, Alex. Keep eating."*
+
+2. **Rolling/incremental tally throughout the day** (for people who don't want to wait until end of day):
+   > User: `Add 40p` (just ate a shake or chicken breast)
+   > System: *"Added 40g protein. Daily total is now: 120g / 200g target."*
+
+**What it needs:**
+- A daily target (protein/carbs/fat) stored per user — likely set during onboarding or a separate goal-setting step
+- A running daily macro total, reset at midnight (or user's local day boundary)
+- Calorie total derived from macros (protein 4 cal/g, carbs 4 cal/g, fat 9 cal/g)
+- Surfaced on the private history page alongside workout data, not just in the SMS reply
+
+**Do NOT build until:** the 8 real workout plans + progression/PR detection are done — this is a parallel feature, not a blocker, and shouldn't distract from finishing the core workout loop first.
+
+---
+
 ### Onboarding Flow — Goal-Based Plan Selection
 
 During onboarding, before anything else, ask the athlete one question:
@@ -207,6 +298,16 @@ This links to the `/builder` page where they can create a fully custom program o
 - Onboarding question stored as `goal` on `User` model
 - Goal → planId mapping handled server-side at account creation
 - Custom plans created via `/builder` stored as a `WorkoutPlan` row owned by that user
+
+---
+
+### Cardio Logging — Optional Distance/Steps (added after live SMS testing)
+
+Cardio exercises (`type: "cardio"`) currently log a single number: minutes. Real testing surfaced that people may want to log distance (miles) or steps alongside time, e.g. "30 min, 2.5 mi" instead of just "30".
+
+**Why not now:** current single-number parsing (`parseMinutes`) already works fine for the MVP — this is a nice-to-have surfaced during testing, not a gap blocking anything.
+
+**How to build it later:** the cardio `SetLog` row already stores an unused `weight` field (currently always 0) — that field could hold distance without a schema change, just a parsing/display update (e.g. "30x2.5" meaning 30 min, 2.5 miles) plus updated prompt copy explaining the optional second number.
 
 ---
 

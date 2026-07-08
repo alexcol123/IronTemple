@@ -5,7 +5,11 @@ import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 type Message = { from: "bot" | "user"; text: string };
 
@@ -19,11 +23,9 @@ function renderText(text: string) {
       </Link>
     ) : (
       part
-    )
+    ),
   );
 }
-
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const INITIAL_MESSAGE: Message = {
   from: "bot",
@@ -36,7 +38,6 @@ export default function Page() {
   const [phone, setPhone] = useState("");
   const [state, setState] = useState<"phone" | string>("phone");
   const [context, setContext] = useState<Record<string, unknown>>({});
-  const [simDay, setSimDay] = useState<number>(new Date().getDay());
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -60,7 +61,10 @@ export default function Page() {
       const data = await res.json();
       if (data.user) {
         setState("idle");
-        addMessage({ from: "bot", text: `Hey ${data.user.name}! 👋 Type HERE when you're at the gym.` });
+        addMessage({
+          from: "bot",
+          text: `Hey ${data.user.name}! 👋 Type HERE when you're at the gym.`,
+        });
       } else {
         setState("idle");
         addMessage({ from: "bot", text: `Welcome! Type JOIN to sign up.` });
@@ -71,7 +75,7 @@ export default function Page() {
     const res = await fetch("/api/message", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, text, state, context, simDay }),
+      body: JSON.stringify({ phone, text, state, context }),
     });
 
     const data = await res.json();
@@ -86,29 +90,37 @@ export default function Page() {
 
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-gray-100 overflow-hidden gap-3">
-
       {/* Dev toolbar — outside the phone frame */}
       <div className="flex items-center gap-3 flex-wrap justify-center">
-        <span className="text-xs text-muted-foreground">Simulate day:</span>
-        {DAYS.map((day, i) => (
-          <button
-            key={day}
-            onClick={() => setSimDay(i)}
-            className={`text-xs px-2 py-1 rounded-md border transition-colors ${
-              simDay === i ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            {day}
-          </button>
-        ))}
-        <Link href="/history" className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors">
+        <Link
+          href="/history"
+          className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors"
+        >
           History
         </Link>
-        <Link href="/prs" className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors">
+        <Link
+          href="/prs"
+          className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors"
+        >
           PRs
         </Link>
-        <Link href="/email" className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors">
+        <Link
+          href="/email"
+          className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors"
+        >
           Email
+        </Link>
+        <Link
+          href="/admin"
+          className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors"
+        >
+          Admin
+        </Link>
+        <Link
+          href="/profile"
+          className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors"
+        >
+          My Info
         </Link>
         <Popover>
           <PopoverTrigger className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:bg-muted transition-colors">
@@ -118,14 +130,39 @@ export default function Page() {
             <p className="text-xs font-semibold mb-2">Available Commands</p>
             <div className="flex flex-col gap-2">
               {[
-                { cmd: "JOIN", desc: "Sign up with your phone number", when: "Any time" },
-                { cmd: "HERE", desc: "Start today's workout", when: "Any time" },
-                { cmd: "CHANGE", desc: "Switch to a different plan", when: "Any time" },
-                { cmd: "START", desc: "Begin the exercise list", when: "After HERE" },
-                { cmd: "SKIP", desc: "Skip the current exercise", when: "During workout" },
+                {
+                  cmd: "JOIN",
+                  desc: "Sign up with your phone number",
+                  when: "Any time",
+                },
+                {
+                  cmd: "HERE",
+                  desc: "Start today's workout",
+                  when: "Any time",
+                },
+                {
+                  cmd: "CHANGE",
+                  desc: "Switch to a different plan",
+                  when: "Any time",
+                },
+                {
+                  cmd: "START",
+                  desc: "Begin the exercise list",
+                  when: "After HERE",
+                },
+                {
+                  cmd: "SKIP",
+                  desc: "Skip the current exercise",
+                  when: "During workout",
+                },
               ].map(({ cmd, desc, when }) => (
                 <div key={cmd}>
-                  <p className="text-xs font-mono font-medium">{cmd} <span className="font-sans font-normal text-muted-foreground">— {when}</span></p>
+                  <p className="text-xs font-mono font-medium">
+                    {cmd}{" "}
+                    <span className="font-sans font-normal text-muted-foreground">
+                      — {when}
+                    </span>
+                  </p>
                   <p className="text-xs text-muted-foreground">{desc}</p>
                 </div>
               ))}
@@ -147,10 +184,13 @@ export default function Page() {
         </div>
 
         {/* Messages */}
-        <ScrollArea className="flex-1 px-4 py-4">
-          <div className="flex flex-col gap-3">
+        <ScrollArea className="flex-1 min-h-0 w-full **:data-[slot=scroll-area-scrollbar]:hidden">
+          <div className="flex flex-col gap-3 px-1 py-1">
             {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                key={i}
+                className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}
+              >
                 <div
                   className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap ${
                     msg.from === "user"
@@ -172,7 +212,9 @@ export default function Page() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={state === "phone" ? "Enter your phone number..." : "Message"}
+            placeholder={
+              state === "phone" ? "Enter your phone number..." : "Message"
+            }
             className="rounded-full text-sm"
           />
           <Button size="sm" onClick={handleSend} className="rounded-full px-4">

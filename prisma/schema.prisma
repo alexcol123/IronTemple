@@ -7,18 +7,22 @@ datasource db {
   provider = "postgresql"
 }
 
-// The athlete. Tracks their sessions and which plans they have followed over time.
+// ─── STEP 1: Who is using the app ────────────────────────────────────────────
+
+// The athlete. Identified by phone number.
 model User {
-  id           String           @id @default(uuid())
-  name         String
-  phone        String           @unique
-  email        String?
-  createdAt    DateTime         @default(now())
-  sessions     WorkoutSession[]
-  planHistory  UserPlan[]
+  id          String           @id @default(uuid())
+  name        String
+  phone       String           @unique
+  email       String?
+  createdAt   DateTime         @default(now())
+  planHistory UserPlan[]
+  sessions    WorkoutSession[]
 }
 
-// A workout program template (e.g. "Ronnie Coleman Split"). Seeded once, shared by all users.
+// ─── STEP 2: The workout program templates (seeded once, shared by all users) ─
+
+// A workout program (e.g. "Arnold Split"). One row shared by all users on that plan.
 model WorkoutPlan {
   id          String       @id @default(uuid())
   name        String
@@ -26,19 +30,7 @@ model WorkoutPlan {
   userHistory UserPlan[]
 }
 
-// Tracks which plan a user is following and when. Null endDate means currently active.
-// Lets users switch plans (e.g. Ronnie in Jan, Arnold in Feb) while keeping full history.
-model UserPlan {
-  id        String      @id @default(uuid())
-  user      User        @relation(fields: [userId], references: [id])
-  userId    String
-  plan      WorkoutPlan @relation(fields: [planId], references: [id])
-  planId    String
-  startDate DateTime    @default(now())
-  endDate   DateTime?
-}
-
-// One day inside a WorkoutPlan (e.g. Day 1: Chest and Back). Seeded once, never changes.
+// One day inside a plan (e.g. Day 1: Chest and Back).
 model WorkoutDay {
   id        String            @id @default(uuid())
   day       Int
@@ -50,21 +42,46 @@ model WorkoutDay {
   sessions  WorkoutSession[]
 }
 
-// A single exercise inside a WorkoutDay template (e.g. Bench Press, 4 sets x 10 reps).
-// This is the blueprint — not the actual data the user logs.
+// controls how an exercise is logged and how targetReps is read:
+//   weighted   (default) — weight x reps per set, e.g. "150x10 160x8"
+//   cardio     — targetReps means recommended minutes, logged as a real minute count
+//   bodyweight — reps per set, no weight, e.g. "15 12 10"
+// Enforced at the database level — once users can add their own exercises (soon),
+// this is the one thing that guarantees bad data can't sneak in outside the seed script.
+// Adding a new type (crossfit, endurance, sprint...) means a small migration, on purpose.
+enum ExerciseType {
+  weighted
+  cardio
+  bodyweight
+}
+
+// One exercise inside a day (e.g. Bench Press — 4 sets x 10 reps). The blueprint.
 model PlannedExercise {
   id           String        @id @default(uuid())
   name         String
   targetSets   Int
   targetReps   Int
+  type         ExerciseType  @default(weighted)
   order        Int
   workoutDay   WorkoutDay    @relation(fields: [workoutDayId], references: [id])
   workoutDayId String
   logs         ExerciseLog[]
 }
 
-// Created each time a user trains. Links a user to a WorkoutDay on a specific date.
-// 122 users x 6 days a week = many sessions, but the plan template rows stay shared.
+// ─── STEP 3: Connect users to plans and track their training ─────────────────
+
+// Which plan the user is following and when. endDate null = currently active.
+model UserPlan {
+  id        String      @id @default(uuid())
+  user      User        @relation(fields: [userId], references: [id])
+  userId    String
+  plan      WorkoutPlan @relation(fields: [planId], references: [id])
+  planId    String
+  startDate DateTime    @default(now())
+  endDate   DateTime?
+}
+
+// Created each time a user trains. One row per gym visit.
 model WorkoutSession {
   id           String        @id @default(uuid())
   date         DateTime      @default(now())
@@ -75,8 +92,7 @@ model WorkoutSession {
   exercises    ExerciseLog[]
 }
 
-// The user's result on one exercise during a session.
-// skipped = true if the machine was busy and they moved on.
+// The user's result on one exercise during a session. skipped = machine was busy.
 model ExerciseLog {
   id                String          @id @default(uuid())
   order             Int
@@ -88,8 +104,7 @@ model ExerciseLog {
   sets              SetLog[]
 }
 
-// One individual set logged by the user (e.g. 150lbs x 10 reps).
-// Four rows here = four sets done on that exercise.
+// One individual set (e.g. 150lbs x 10 reps). Four rows = four sets done.
 model SetLog {
   id            String      @id @default(uuid())
   setNumber     Int
@@ -97,4 +112,15 @@ model SetLog {
   reps          Int
   exerciseLog   ExerciseLog @relation(fields: [exerciseLogId], references: [id])
   exerciseLogId String
+}
+
+// ─── STEP 4: Remember where a real texting conversation left off ─────────────
+
+// Real SMS has no browser session — this is what "state" and "context" persist to
+// between one text and the next, keyed by phone number.
+model SmsState {
+  phone     String   @id
+  state     String   @default("idle")
+  context   Json     @default("{}")
+  updatedAt DateTime @updatedAt
 }

@@ -1,17 +1,7 @@
-export type Exercise = {
-  name: string
-  sets: number
-  reps: number
-}
+import { SplitDay } from "./types"
 
-export type SplitDay = {
-  day: number
-  name: string
-  muscles: string
-  exercises: Exercise[]
-}
-
-export const ARNOLD_SPLIT: SplitDay[] = [
+// Classic hypertrophy split — each muscle group trained twice a week, moderate-high volume.
+export const BUILD_MUSCLE_SPLIT: SplitDay[] = [
   {
     day: 1,
     name: "Chest and Back",
@@ -20,7 +10,7 @@ export const ARNOLD_SPLIT: SplitDay[] = [
       { name: "Bench Press", sets: 4, reps: 10 },
       { name: "Incline Bench Press", sets: 4, reps: 10 },
       { name: "Dumbbell Pullovers", sets: 4, reps: 10 },
-      { name: "Chin Up", sets: 4, reps: 10 },
+      { name: "Chin Up", sets: 4, reps: 10, type: "bodyweight" },
       { name: "Bent Over Row", sets: 4, reps: 10 },
       { name: "Deadlift", sets: 4, reps: 10 },
       { name: "Crunches", sets: 5, reps: 25 },
@@ -66,7 +56,7 @@ export const ARNOLD_SPLIT: SplitDay[] = [
       { name: "Bench Press", sets: 4, reps: 10 },
       { name: "Incline Bench Press", sets: 4, reps: 10 },
       { name: "Dumbbell Pullovers", sets: 4, reps: 10 },
-      { name: "Chin Up", sets: 4, reps: 10 },
+      { name: "Chin Up", sets: 4, reps: 10, type: "bodyweight" },
       { name: "Bent Over Row", sets: 4, reps: 10 },
       { name: "Deadlift", sets: 4, reps: 10 },
       { name: "Crunches", sets: 5, reps: 25 },
@@ -105,9 +95,3 @@ export const ARNOLD_SPLIT: SplitDay[] = [
     ],
   },
 ]
-
-export function getSplitDay(dayNumber: number): SplitDay {
-  const day = ARNOLD_SPLIT.find((d) => d.day === dayNumber)
-  if (!day) throw new Error(`Invalid day number: ${dayNumber}`)
-  return day
-}

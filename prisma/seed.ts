@@ -1,20 +1,54 @@
 import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { ARNOLD_SPLIT } from "../lib/data/arnold";
-import { RONNIE_SPLIT } from "../lib/data/ronnie";
-import { FOUNDER_SPLIT } from "../lib/data/founder";
+import { LOSE_WEIGHT_SPLIT } from "../lib/data/lose-weight";
+import { BUILD_MUSCLE_SPLIT } from "../lib/data/build-muscle";
+import { GET_STRONGER_SPLIT } from "../lib/data/get-stronger";
+import { GLUTE_FOCUS_SPLIT } from "../lib/data/glute-focus";
+
+// Shared test content — same 3 base days (repeated per tier) across all 4 goals,
+// so testing doesn't require real goal-specific content yet. See lib/data/shared-test/.
+import { SHARED_TEST_BEGINNER_SPLIT } from "../lib/data/shared-test/beginner";
+import { SHARED_TEST_INTERMEDIATE_SPLIT } from "../lib/data/shared-test/intermediate";
+import { SHARED_TEST_ADVANCED_SPLIT } from "../lib/data/shared-test/advanced";
 
 const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL! });
 const prisma = new PrismaClient({ adapter });
 
 async function seed() {
+  console.log("Clearing old data...");
+  await prisma.setLog.deleteMany({});
+  await prisma.exerciseLog.deleteMany({});
+  await prisma.workoutSession.deleteMany({});
+  await prisma.userPlan.deleteMany({});
+  await prisma.smsState.deleteMany({});
+  await prisma.user.deleteMany({});
+  await prisma.plannedExercise.deleteMany({});
+  await prisma.workoutDay.deleteMany({});
+  await prisma.workoutPlan.deleteMany({});
+
   console.log("Seeding database...");
 
   const plans = [
-    { name: "Arnold Split", days: ARNOLD_SPLIT },
-    { name: "Ronnie Coleman Split", days: RONNIE_SPLIT },
-    { name: "Founder Split", days: FOUNDER_SPLIT },
+    { name: "Lose Weight", days: LOSE_WEIGHT_SPLIT },
+    { name: "Build Muscle", days: BUILD_MUSCLE_SPLIT },
+    { name: "Get Stronger", days: GET_STRONGER_SPLIT },
+    { name: "Glute Focus", days: GLUTE_FOCUS_SPLIT },
+
+    { name: "Beginner Lose Weight", days: SHARED_TEST_BEGINNER_SPLIT },
+    { name: "Beginner Build Muscle", days: SHARED_TEST_BEGINNER_SPLIT },
+    { name: "Beginner Get Stronger", days: SHARED_TEST_BEGINNER_SPLIT },
+    { name: "Beginner Glute Focus", days: SHARED_TEST_BEGINNER_SPLIT },
+
+    { name: "Intermediate Lose Weight", days: SHARED_TEST_INTERMEDIATE_SPLIT },
+    { name: "Intermediate Build Muscle", days: SHARED_TEST_INTERMEDIATE_SPLIT },
+    { name: "Intermediate Get Stronger", days: SHARED_TEST_INTERMEDIATE_SPLIT },
+    { name: "Intermediate Glute Focus", days: SHARED_TEST_INTERMEDIATE_SPLIT },
+
+    { name: "Advanced Lose Weight", days: SHARED_TEST_ADVANCED_SPLIT },
+    { name: "Advanced Build Muscle", days: SHARED_TEST_ADVANCED_SPLIT },
+    { name: "Advanced Get Stronger", days: SHARED_TEST_ADVANCED_SPLIT },
+    { name: "Advanced Glute Focus", days: SHARED_TEST_ADVANCED_SPLIT },
   ];
 
   for (const plan of plans) {
@@ -31,6 +65,7 @@ async function seed() {
                 name: exercise.name,
                 targetSets: exercise.sets,
                 targetReps: exercise.reps,
+                type: exercise.type ?? "weighted",
                 order: index + 1,
               })),
             },

@@ -195,18 +195,22 @@ datasource db {
   provider = "postgresql"
 }
 
-// The athlete. Tracks their sessions and which plans they have followed over time.
+// ─── STEP 1: Who is using the app ────────────────────────────────────────────
+
+// The athlete. Identified by phone number.
 model User {
-  id           String           @id @default(uuid())
-  name         String
-  phone        String           @unique
-  email        String?
-  createdAt    DateTime         @default(now())
-  sessions     WorkoutSession[]
-  planHistory  UserPlan[]
+  id          String           @id @default(uuid())
+  name        String
+  phone       String           @unique
+  email       String?
+  createdAt   DateTime         @default(now())
+  planHistory UserPlan[]
+  sessions    WorkoutSession[]
 }
 
-// A workout program template (e.g. "Arnold Split"). Seeded once, shared by all users.
+// ─── STEP 2: The workout program templates (seeded once, shared by all users) ─
+
+// A workout program (e.g. "Arnold Split"). One row shared by all users on that plan.
 model WorkoutPlan {
   id          String       @id @default(uuid())
   name        String
@@ -214,18 +218,7 @@ model WorkoutPlan {
   userHistory UserPlan[]
 }
 
-// Tracks which plan a user is following and when. Null endDate means currently active.
-model UserPlan {
-  id        String      @id @default(uuid())
-  user      User        @relation(fields: [userId], references: [id])
-  userId    String
-  plan      WorkoutPlan @relation(fields: [planId], references: [id])
-  planId    String
-  startDate DateTime    @default(now())
-  endDate   DateTime?
-}
-
-// One day inside a WorkoutPlan (e.g. Day 1: Chest and Back). Seeded once, never changes.
+// One day inside a plan (e.g. Day 1: Chest and Back).
 model WorkoutDay {
   id        String            @id @default(uuid())
   day       Int
@@ -237,7 +230,7 @@ model WorkoutDay {
   sessions  WorkoutSession[]
 }
 
-// A single exercise inside a WorkoutDay template (e.g. Bench Press, 4 sets x 10 reps).
+// One exercise inside a day (e.g. Bench Press — 4 sets x 10 reps). The blueprint.
 model PlannedExercise {
   id           String        @id @default(uuid())
   name         String
@@ -249,7 +242,20 @@ model PlannedExercise {
   logs         ExerciseLog[]
 }
 
-// Created each time a user trains. Links a user to a WorkoutDay on a specific date.
+// ─── STEP 3: Connect users to plans and track their training ─────────────────
+
+// Which plan the user is following and when. endDate null = currently active.
+model UserPlan {
+  id        String      @id @default(uuid())
+  user      User        @relation(fields: [userId], references: [id])
+  userId    String
+  plan      WorkoutPlan @relation(fields: [planId], references: [id])
+  planId    String
+  startDate DateTime    @default(now())
+  endDate   DateTime?
+}
+
+// Created each time a user trains. One row per gym visit.
 model WorkoutSession {
   id           String        @id @default(uuid())
   date         DateTime      @default(now())
@@ -292,6 +298,25 @@ npx prisma generate
 
 ---
 
+**Real-world example — how all 8 models work together:**
+
+Say Alex signs up and does an Arnold Split chest day. Here's exactly what gets created in the DB:
+
+| Model | What gets stored | Example value |
+|---|---|---|
+| `User` | Alex's account | name: "Alex", phone: "555-1234" |
+| `WorkoutPlan` | The program | name: "Arnold Split" |
+| `WorkoutDay` | Day 1 of that plan | name: "Chest and Back", day: 1 |
+| `PlannedExercise` | Bench Press blueprint | name: "Bench Press", targetSets: 4, targetReps: 10 |
+| `UserPlan` | Alex started Arnold Split | userId: Alex, planId: Arnold Split, startDate: today |
+| `WorkoutSession` | Alex trained today | userId: Alex, workoutDayId: Day 1, date: Jun 15 |
+| `ExerciseLog` | Alex did Bench Press | sessionId: today's session, skipped: false |
+| `SetLog` | Each set Alex hit | 135×10, 145×10, 155×8, 165×6 → 4 rows |
+
+**The key insight:** `WorkoutPlan`, `WorkoutDay`, and `PlannedExercise` are seeded once and never change — they're the blueprint. Every time Alex trains, new `WorkoutSession`, `ExerciseLog`, and `SetLog` rows are created pointing back to that same blueprint. 500 users on the Arnold Split all share the same 3 template rows.
+
+---
+
 ### 6. Workout Split Data Files
 
 Static files in `lib/data/` hold the raw split data for each athlete. Used **only by the seed script** — not imported by the app at runtime.
@@ -308,6 +333,11 @@ Both export a `SplitDay[]` array. `ronnie.ts` imports the `SplitDay` type from `
 ### 7. Seeding the Database
 
 Seed data = the workout plan templates. Run once, never again unless you add a new plan.
+
+First install `tsx` — the TypeScript runner needed to execute `prisma/seed.ts` directly:
+```bash
+npm install --save-dev tsx
+```
 
 **Step 1 — Configure the seed command in `prisma.config.ts`:**
 
@@ -329,6 +359,9 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { ARNOLD_SPLIT } from "../lib/data/arnold";
 import { RONNIE_SPLIT } from "../lib/data/ronnie";
 
+// PrismaPg is the driver adapter — tells Prisma to use pg (node-postgres) to connect.
+// Every place you create a PrismaClient in this project needs it.
+// seed.ts uses DIRECT_URL (CLI operation), lib/db.ts uses DATABASE_URL (app runtime).
 const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL! });
 const prisma = new PrismaClient({ adapter });
 
