@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { ReadNav } from "@/components/read-nav";
 
 type SetLog = { setNumber: number; weight: number; reps: number };
 type ExerciseLog = {
@@ -84,6 +85,8 @@ export default function HistoryByIdPage() {
         <div className="px-4 py-3 border-b flex items-center justify-center">
           <p className="font-semibold text-sm">Workout History</p>
         </div>
+
+        <ReadNav userId={userId} />
 
         {/* Week navigation */}
         <div className="px-4 py-2 border-b flex items-center justify-between">

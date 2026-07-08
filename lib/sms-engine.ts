@@ -196,8 +196,12 @@ export async function getUserTierKey(userId: string): Promise<string> {
   return "Intermediate";
 }
 
+// Clamped to a strength-rep baseline (max 5) regardless of what a plan's targetReps
+// says — Get Stronger has a +0 offset, so an uncapped baseline (e.g. a hypertrophy
+// exercise seeded with targetReps: 10) would silently demand 10 reps on a heavy set
+// to progress. Capping here means any exercise data is safe to reuse across goals.
 export function getEffectiveTargetReps(baseTargetReps: number, goalKey: string): number {
-  return baseTargetReps + (GOAL_REP_OFFSET[goalKey] ?? 5);
+  return Math.min(baseTargetReps, 5) + (GOAL_REP_OFFSET[goalKey] ?? 5);
 }
 
 // The graduated rep ladder: each exercise's targetReps is a strength baseline, and
@@ -286,6 +290,17 @@ export async function handleMessage(
     };
   }
 
+  // APP works from any state — one link to the hub (history, PRs, my info, etc).
+  if (input === "APP") {
+    const user = await prisma.user.findUnique({ where: { phone } });
+    if (!user) return { reply: "Phone not found. Text JOIN to sign up.", nextState: "idle" };
+    return {
+      reply: `Here's your app:\n${process.env.APP_URL}/menu/${user.id}`,
+      nextState: state,
+      context,
+    };
+  }
+
   // DEV ONLY — works from any state, since the whole point is bailing out when
   // stuck somewhere (mid-onboarding, mid-workout, etc). Wipes just this phone's
   // own data so testers can re-JOIN without resetting the whole database.
@@ -310,7 +325,7 @@ export async function handleMessage(
   if (state === "idle") {
     if (input === "MENU" || input === "HEY ARNOLD") {
       return {
-        reply: `📋 What do you need?\n\nText HISTORY to see your workout history\nText CHANGE to switch plans\nText HERE to start today's workout`,
+        reply: `📋 What do you need?\n\nText APP to open your app\nText HISTORY to see your workout history\nText CHANGE to switch plans\nText HERE to start today's workout`,
         nextState: "idle",
       };
     }

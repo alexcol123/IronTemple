@@ -4,9 +4,12 @@ import { heaviestSet, calculateNextSuggestedWeight, getUserGoalKey, getEffective
 
 export async function GET(req: NextRequest) {
   const phone = req.nextUrl.searchParams.get("phone");
-  if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
+  const userId = req.nextUrl.searchParams.get("userId");
+  if (!phone && !userId) return NextResponse.json({ error: "phone or userId required" }, { status: 400 });
 
-  const user = await prisma.user.findUnique({ where: { phone } });
+  const user = userId
+    ? await prisma.user.findUnique({ where: { id: userId } })
+    : await prisma.user.findUnique({ where: { phone: phone! } });
   if (!user) return NextResponse.json({ prs: [] });
 
   const goalKey = await getUserGoalKey(user.id);

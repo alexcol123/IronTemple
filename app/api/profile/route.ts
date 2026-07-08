@@ -4,9 +4,12 @@ import { GOALS, EXPERIENCE_TIERS, getUserGoalKey, getUserTierKey } from "@/lib/s
 
 export async function GET(req: NextRequest) {
   const phone = req.nextUrl.searchParams.get("phone");
-  if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
+  const userId = req.nextUrl.searchParams.get("userId");
+  if (!phone && !userId) return NextResponse.json({ error: "phone or userId required" }, { status: 400 });
 
-  const user = await prisma.user.findUnique({ where: { phone } });
+  const user = userId
+    ? await prisma.user.findUnique({ where: { id: userId } })
+    : await prisma.user.findUnique({ where: { phone: phone! } });
   if (!user) return NextResponse.json({ user: null });
 
   const userPlan = await prisma.userPlan.findFirst({
@@ -33,10 +36,12 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const { phone, name, goalPlanName, tierKey }: { phone: string; name?: string; goalPlanName: string; tierKey: string } = body;
-  if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
+  const { phone, userId, name, goalPlanName, tierKey }: { phone?: string; userId?: string; name?: string; goalPlanName: string; tierKey: string } = body;
+  if (!phone && !userId) return NextResponse.json({ error: "phone or userId required" }, { status: 400 });
 
-  const user = await prisma.user.findUnique({ where: { phone } });
+  const user = userId
+    ? await prisma.user.findUnique({ where: { id: userId } })
+    : await prisma.user.findUnique({ where: { phone: phone! } });
   if (!user) return NextResponse.json({ error: "user not found" }, { status: 404 });
 
   if (name && name.trim() && name.trim() !== user.name) {

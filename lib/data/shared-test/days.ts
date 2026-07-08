@@ -12,8 +12,8 @@ export const CHEST_AND_BACK = {
   muscles: "Chest, Back",
   exercises: [
     { name: "Bench Press", sets: 3, reps: 5 },
-    // { name: "Push-ups", sets: 3, reps: 15, type: "bodyweight" },
-    // { name: "Pull-ups", sets: 3, reps: 8, type: "bodyweight" },
+    { name: "Push-ups", sets: 3, reps: 15, type: "bodyweight" },
+    { name: "Pull-ups", sets: 3, reps: 8, type: "bodyweight" },
     { name: "Barbell Row", sets: 3, reps: 6 },
   ] satisfies Exercise[],
 };
@@ -23,8 +23,8 @@ export const ARMS_AND_SHOULDERS = {
   muscles: "Biceps, Triceps, Shoulders",
   exercises: [
     { name: "Preacher Curl", sets: 3, reps: 6 },
-    // { name: "Tricep Extension", sets: 3, reps: 6 },
-    // { name: "Shoulder Press", sets: 3, reps: 5 },
+    { name: "Tricep Extension", sets: 3, reps: 6 },
+    { name: "Shoulder Press", sets: 3, reps: 5 },
   ] satisfies Exercise[],
 };
 
@@ -34,7 +34,7 @@ export const LEGS_AND_CARDIO = {
   exercises: [
     { name: "Squat", sets: 3, reps: 5 },
     { name: "Leg Press", sets: 3, reps: 6 },
-    // { name: "Treadmill", sets: 1, reps: 15, type: "cardio" },
-    // { name: "Stairs", sets: 1, reps: 10, type: "cardio" },
+    { name: "Treadmill", sets: 1, reps: 15, type: "cardio" },
+    { name: "Stairs", sets: 1, reps: 10, type: "cardio" },
   ] satisfies Exercise[],
 };
