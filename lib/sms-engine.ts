@@ -55,11 +55,11 @@ type ExerciseType = "weighted" | "cardio" | "bodyweight";
 type Exercise = { id: string; name: string; targetSets: number; targetReps: number; type?: ExerciseType };
 
 function exerciseLine(e: Exercise, i: number, goalKey?: string) {
-  if (e.type === "cardio") return `${i + 1}. ${e.name} — ${e.targetReps} min`;
+  if (e.type === "cardio") return `${i + 1}. ${e.name} - ${e.targetReps} min`;
   // Weighted exercises show the goal's typical range here too, matching the
   // exercisePrompt header — bodyweight keeps its fixed rep count regardless of goal.
   const reps = e.type === "bodyweight" || !goalKey ? e.targetReps : GOAL_REP_RANGE[goalKey] ?? e.targetReps;
-  return `${i + 1}. ${e.name} — ${e.targetSets}x${reps}`;
+  return `${i + 1}. ${e.name} - ${e.targetSets}x${reps}`;
 }
 
 // The "failure set" is whichever set had the heaviest weight, not necessarily the
@@ -74,23 +74,28 @@ function exercisePrompt(
   lastSets: SetEntry[] | undefined,
   goalKey: string | undefined,
   referenceSet: SetEntry | null | undefined,
+  hasNext: boolean,
 ) {
+  // BUSY only makes sense if there's another exercise today to swap places with —
+  // offering it on the last exercise would just be a dead end (see the BUSY
+  // handler in handleMessage, which blocks it in that case too).
+  const busyHint = hasNext ? ", or BUSY if the machine's taken" : "";
   if (exercise.type === "cardio") {
-    return `${exercise.name} — aim for ${exercise.targetReps} min.\nReply with how long you went (e.g. 20 or 35), or SKIP.`;
+    return `${exercise.name} - aim for ${exercise.targetReps} min.\nReply with how long you went (e.g. 20 or 35), or SKIP${busyHint}.`;
   }
   if (exercise.type === "bodyweight") {
-    let msg = `${exercise.name} — ${exercise.targetSets} sets x ${exercise.targetReps} reps`;
+    let msg = `${exercise.name} - ${exercise.targetSets} sets x ${exercise.targetReps} reps`;
     if (lastSets && lastSets.length > 0) {
       msg += `\nLast time: ${lastSets.map((s) => s.reps).join(" ")}`;
     }
-    msg += `\nLog your reps per set (e.g. 15 12 10), or type SKIP`;
+    msg += `\nLog your reps per set (e.g. 15 12 10), or type SKIP${busyHint}`;
     return msg;
   }
   // The header shows the goal's typical rep range, not the raw baseline reps —
   // baseline is only an internal anchor for the offset math (see GOAL_REP_RANGE),
   // never something a lifter should be told to aim for directly.
   const repRange = goalKey ? GOAL_REP_RANGE[goalKey] ?? exercise.targetReps : exercise.targetReps;
-  let msg = `${exercise.name} — ${exercise.targetSets} sets x ${repRange} reps (push your heaviest set to failure)`;
+  let msg = `${exercise.name} - ${exercise.targetSets} sets x ${repRange} reps (push your heaviest set to failure)`;
   // "Recent heavy set" instead of "Last time" — the reference is the best of the
   // last 2 sessions (see getReferenceSet), not necessarily the most recent one, so
   // "last time" would sometimes be factually wrong. This is the one place the
@@ -100,10 +105,10 @@ function exercisePrompt(
     const effectiveTarget = getEffectiveTargetReps(exercise.targetReps, goalKey);
     msg +=
       suggestedWeight !== null
-        ? `\nRecent heavy set: ${referenceSet.weight}x${referenceSet.reps} — try ${suggestedWeight} lbs today, even 1-2 more reps builds real strength.`
-        : `\nRecent heavy set: ${referenceSet.weight}x${referenceSet.reps} — try for ${nextRepGoal(referenceSet.reps, effectiveTarget)} reps today.`;
+        ? `\nRecent heavy set: ${referenceSet.weight}x${referenceSet.reps} - try ${suggestedWeight} lbs today, even 1-2 more reps builds real strength.`
+        : `\nRecent heavy set: ${referenceSet.weight}x${referenceSet.reps} - try for ${nextRepGoal(referenceSet.reps, effectiveTarget)} reps today.`;
   }
-  msg += `\nLog your sets (e.g. 150x10 160x8) or type SKIP`;
+  msg += `\nLog your sets (e.g. 150x10 160x8) or type SKIP${busyHint}`;
   return msg;
 }
 
@@ -321,14 +326,14 @@ export async function handleMessage(
       await prisma.userPlan.deleteMany({ where: { userId: user.id } });
       await prisma.user.delete({ where: { id: user.id } });
     }
-    return { reply: "Reset done — text JOIN to start fresh.", nextState: "idle", context: {} };
+    return { reply: "Reset done - text JOIN to start fresh.", nextState: "idle", context: {} };
   }
 
   // Idle — entry point
   if (state === "idle") {
     if (input === "MENU" || input === "HEY ARNOLD") {
       return {
-        reply: `📋 What do you need?\n\nText APP to open your app\nText HISTORY to see your workout history\nText CHANGE to switch plans\nText HERE to start today's workout`,
+        reply: `What do you need?\n\nText APP to open your app\nText HISTORY to see your workout history\nText CHANGE to switch plans\nText HERE to start today's workout`,
         nextState: "idle",
       };
     }
@@ -341,7 +346,7 @@ export async function handleMessage(
           nextState: "idle",
         };
       }
-      return { reply: "Welcome to Iron Temple 🏋️ What's your name?", nextState: "onboarding_name" };
+      return { reply: "Welcome to Iron Temple! What's your name?", nextState: "onboarding_name" };
     }
 
     if (input === "HERE") {
@@ -377,7 +382,7 @@ export async function handleMessage(
         const options = [...distinctDays.values()];
         const list = options.map((d, i) => `${i + 1}. ${d.name}`).join("\n");
         return {
-          reply: `You've already hit all ${activePlan.plan.days.length} sessions this week — nice work 💪 Want a bonus session anyway?\n\n${list}\n\nReply with just the number (e.g. 1).`,
+          reply: `You've already hit all ${activePlan.plan.days.length} sessions this week - nice work! Want a bonus session anyway?\n\n${list}\n\nReply with just the number (e.g. 1).`,
           nextState: "bonus_day_choice",
           context: { userId: user.id, options: options.map((d) => ({ workoutDayId: d.id, name: d.name, exercises: d.exercises })) },
         };
@@ -387,7 +392,7 @@ export async function handleMessage(
       const list = workoutDay.exercises.map((e, i) => exerciseLine(e, i, goalKey)).join("\n");
 
       return {
-        reply: `Hey ${user.name}! 👋\nDay ${nextDayNumber} of ${activePlan.plan.days.length} this week: ${workoutDay.name}\n\n${list}\n\nType START when ready.`,
+        reply: `Hey ${user.name}!\nDay ${nextDayNumber} of ${activePlan.plan.days.length} this week: ${workoutDay.name}\n\n${list}\n\nType START when ready.`,
         nextState: "workout_ready",
         context: { userId: user.id, workoutDayId: workoutDay.id, exercises: workoutDay.exercises, exerciseIndex: 0 },
       };
@@ -455,7 +460,7 @@ export async function handleMessage(
       return { reply: `Pick a number between 1 and ${GOALS.length}.`, nextState: "onboarding_goal", context };
     }
     const goal = GOALS[choice - 1];
-    const list = EXPERIENCE_TIERS.map((t, i) => `${i + 1}. ${t.label} — ${t.days}`).join("\n");
+    const list = EXPERIENCE_TIERS.map((t, i) => `${i + 1}. ${t.label} - ${t.days}`).join("\n");
     return {
       reply: `${goal.label}, love it! What's your experience level?\n\n${list}\n\nReply with just the number (e.g. 1).`,
       nextState: "onboarding_experience",
@@ -479,7 +484,7 @@ export async function handleMessage(
       data: { name, phone, planHistory: { create: { planId: plan.id } } },
     });
     return {
-      reply: `You're all set, ${name}! You're on ${plan.name} — ${tier.days}.\nType HERE when you're at the gym to start.`,
+      reply: `You're all set, ${name}! You're on ${plan.name} - ${tier.days}.\nType HERE when you're at the gym to start.`,
       nextState: "idle",
       context: { userId: user.id },
     };
@@ -495,7 +500,7 @@ export async function handleMessage(
       const referenceSet = await getReferenceSet(userId, first.name);
       const goalKey = await getUserGoalKey(userId);
       return {
-        reply: exercisePrompt(first, lastSets, goalKey, referenceSet),
+        reply: exercisePrompt(first, lastSets, goalKey, referenceSet, exercises.length > 1),
         nextState: "exercise_active",
         context: { ...context, sessionId: session.id, exerciseIndex: 0 },
       };
@@ -518,9 +523,35 @@ export async function handleMessage(
       const referenceSet = await getReferenceSet(userId, current.name);
       const goalKey = await getUserGoalKey(userId);
       return {
-        reply: `Here's where you're at:\n\n${exercisePrompt(current, lastSets, goalKey, referenceSet)}\n\n(Text HISTORY anytime to see your past workouts.)`,
+        reply: `Here's where you're at:\n\n${exercisePrompt(current, lastSets, goalKey, referenceSet, exerciseIndex + 1 < exercises.length)}\n\n(Text HISTORY anytime to see your past workouts.)`,
         nextState: "exercise_active",
         context,
+      };
+    }
+
+    // BUSY — equipment's taken, not skipping it, just swapping it one spot down
+    // so whatever's next gets done first. No log written; this exercise is still
+    // pending. Swapping only one position (not moving to the end of the day)
+    // keeps it inside its natural body-part cluster — someone doing Chest+Biceps
+    // shouldn't end up doing bench press after their biceps are already fried.
+    if (input === "BUSY") {
+      if (exerciseIndex + 1 >= exercises.length) {
+        return {
+          reply: "This is your last exercise - nothing to swap it with. Log it, or SKIP if you're not doing it today.",
+          nextState: "exercise_active",
+          context,
+        };
+      }
+      const reordered = [...exercises];
+      [reordered[exerciseIndex], reordered[exerciseIndex + 1]] = [reordered[exerciseIndex + 1], reordered[exerciseIndex]];
+      const next = reordered[exerciseIndex];
+      const lastSets = await getLastSets(userId, next.name);
+      const referenceSet = await getReferenceSet(userId, next.name);
+      const goalKey = await getUserGoalKey(userId);
+      return {
+        reply: `No worries - we'll come back to ${current.name} shortly.\n\n${exercisePrompt(next, lastSets, goalKey, referenceSet, exerciseIndex + 1 < reordered.length)}`,
+        nextState: "exercise_active",
+        context: { ...context, exercises: reordered },
       };
     }
 
@@ -536,7 +567,7 @@ export async function handleMessage(
         const format = detectInputFormat(text);
         const reply =
           format === "weighted"
-            ? `That looks like weight x reps — this is cardio, just reply with your time in minutes (e.g. 30), or SKIP.`
+            ? `That looks like weight x reps - this is cardio, just reply with your time in minutes (e.g. 30), or SKIP.`
             : `Reply with how long you went in minutes (e.g. 20 or 35), or SKIP.`;
         return { reply, nextState: "exercise_active", context };
       }
@@ -555,7 +586,7 @@ export async function handleMessage(
         const format = detectInputFormat(text);
         const reply =
           format === "weighted"
-            ? `This is a bodyweight exercise — just your reps per set (e.g. 15 12 10), no weight needed.`
+            ? `This is a bodyweight exercise - just your reps per set (e.g. 15 12 10), no weight needed.`
             : `Couldn't read that. Reply with your reps per set (e.g. 15 12 10), or SKIP.`;
         return { reply, nextState: "exercise_active", context };
       }
@@ -574,7 +605,7 @@ export async function handleMessage(
         const format = detectInputFormat(text);
         const reply =
           format === "bareNumbers"
-            ? `Looks like you're missing the weight — reply with weight x reps (e.g. 150x10), or SKIP.`
+            ? `Looks like you're missing the weight - reply with weight x reps (e.g. 150x10), or SKIP.`
             : `Couldn't read that. Use format: 150x10 160x8 170x6\nEach set is weight x reps, separated by spaces.`;
         return { reply, nextState: "exercise_active", context };
       }
@@ -600,7 +631,7 @@ export async function handleMessage(
       // heavy set vs. target) only ever shows in the next session's opening
       // prompt (see exercisePrompt), not immediately after logging.
       if (isWeightPR && previousBestWeight !== null) {
-        prMessage = `\n\n🏆 New PR! ${newMaxWeight} lbs (up from ${previousBestWeight}).`;
+        prMessage = `\n\nCongrats, new PR! ${newMaxWeight} lbs (up from ${previousBestWeight}).`;
       }
     }
 
@@ -615,28 +646,28 @@ export async function handleMessage(
       const lines = logs.map((log) => {
         const ex = exercises.find((e) => e.id === log.plannedExerciseId);
         const name = ex?.name ?? "Unknown";
-        if (log.skipped) return `• ${name} — SKIPPED`;
-        if (ex?.type === "cardio") return `• ${name} — ${log.sets[0]?.reps ?? "?"} min`;
+        if (log.skipped) return `- ${name}: SKIPPED`;
+        if (ex?.type === "cardio") return `- ${name}: ${log.sets[0]?.reps ?? "?"} min`;
         if (ex?.type === "bodyweight") {
           const reps = log.sets.map((s) => s.reps);
           const total = reps.reduce((a, b) => a + b, 0);
-          return `• ${name} — ${total} reps (${reps.join(", ")})`;
+          return `- ${name}: ${total} reps (${reps.join(", ")})`;
         }
         const setStr = log.sets.map((s) => `${s.weight}x${s.reps}`).join(" ");
-        return `• ${name} — ${setStr}`;
+        return `- ${name}: ${setStr}`;
       });
 
       const totalSets = logs.reduce((sum, log) => sum + (log.skipped ? 0 : log.sets.length), 0);
       const doneCount = logs.filter((l) => !l.skipped).length;
 
       const reply = [
-        `Workout complete! Great work 💪${prMessage}`,
+        `Workout complete! Great work!${prMessage}`,
         ``,
         `Today's session:`,
         ...lines,
         ``,
-        `${doneCount} exercise${doneCount !== 1 ? "s" : ""} · ${totalSets} total sets`,
-        `See your full history → ${process.env.APP_URL}/history/${userId}`,
+        `${doneCount} exercise${doneCount !== 1 ? "s" : ""} - ${totalSets} total sets`,
+        `See your full history: ${process.env.APP_URL}/history/${userId}`,
         `Type HERE next time you're at the gym.`,
       ].join("\n");
 
@@ -648,7 +679,7 @@ export async function handleMessage(
     const referenceSet = await getReferenceSet(userId, next.name);
     const goalKey = await getUserGoalKey(userId);
     return {
-      reply: `✓ Done!${prMessage}\n\n${exercisePrompt(next, lastSets, goalKey, referenceSet)}`,
+      reply: `Done!${prMessage}\n\n${exercisePrompt(next, lastSets, goalKey, referenceSet, nextIndex + 1 < exercises.length)}`,
       nextState: "exercise_active",
       context: { ...context, exerciseIndex: nextIndex },
     };
@@ -681,7 +712,7 @@ export async function handleMessage(
     });
 
     return {
-      reply: `Switched to ${newPlan.name}! 💪\nType HERE when you're at the gym.`,
+      reply: `Switched to ${newPlan.name}!\nType HERE when you're at the gym.`,
       nextState: "idle",
       context: {},
     };
