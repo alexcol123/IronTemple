@@ -52,6 +52,11 @@ export default function BuildPage() {
   // across days if the same exercise appears more than once.
   const [customReps, setCustomReps] = useState<Record<string, number>>({});
 
+  // Sets are always shown to the athlete regardless of exercise type, and real
+  // programs vary them per exercise (5 sets on the main lift, 2-3 on accessories)
+  // — unlike weighted reps, there's no reason to keep this hidden.
+  const [customSets, setCustomSets] = useState<Record<string, number>>({});
+
   const loadMyPlans = useCallback(() => {
     fetch(`/api/my-plans?userId=${encodeURIComponent(userId)}`)
       .then((r) => r.json())
@@ -109,6 +114,7 @@ export default function BuildPage() {
     if (exercise.type === "cardio" || exercise.type === "bodyweight") {
       setCustomReps((prev) => (exercise.name in prev ? prev : { ...prev, [exercise.name]: exercise.reps }));
     }
+    setCustomSets((prev) => (exercise.name in prev ? prev : { ...prev, [exercise.name]: exercise.sets }));
   }
 
   async function handleSave() {
@@ -138,7 +144,7 @@ export default function BuildPage() {
             .filter((e): e is Exercise => e !== undefined)
             .map((e) => ({
               name: e.name,
-              sets: e.sets,
+              sets: customSets[e.name] ?? e.sets,
               reps: e.type === "cardio" || e.type === "bodyweight" ? customReps[e.name] ?? e.reps : e.reps,
               type: e.type,
             })),
@@ -317,6 +323,20 @@ export default function BuildPage() {
                                 )}
                                 {ex.name}
                               </label>
+                              {checked && (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={customSets[ex.name] ?? ex.sets}
+                                    onChange={(e) =>
+                                      setCustomSets((prev) => ({ ...prev, [ex.name]: Number(e.target.value) }))
+                                    }
+                                    className="w-10 text-xs px-2 py-1 rounded-md border bg-background"
+                                  />
+                                  <span className="text-xs text-muted-foreground">sets</span>
+                                </div>
+                              )}
                               {checked && (ex.type === "cardio" || ex.type === "bodyweight") && (
                                 <div className="flex items-center gap-1">
                                   <input
