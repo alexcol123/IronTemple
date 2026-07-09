@@ -11,23 +11,34 @@ datasource db {
 
 // The athlete. Identified by phone number.
 model User {
-  id          String           @id @default(uuid())
-  name        String
-  phone       String           @unique
-  email       String?
-  createdAt   DateTime         @default(now())
-  planHistory UserPlan[]
-  sessions    WorkoutSession[]
+  id           String           @id @default(uuid())
+  name         String
+  phone        String           @unique
+  email        String?
+  createdAt    DateTime         @default(now())
+  planHistory  UserPlan[]
+  sessions     WorkoutSession[]
+  createdPlans WorkoutPlan[]    @relation("PlanCreator")
 }
 
 // ─── STEP 2: The workout program templates (seeded once, shared by all users) ─
 
 // A workout program (e.g. "Arnold Split"). One row shared by all users on that plan.
 model WorkoutPlan {
-  id          String       @id @default(uuid())
-  name        String
-  days        WorkoutDay[]
-  userHistory UserPlan[]
+  id              String       @id @default(uuid())
+  name            String
+  // Explicit goal this plan's rep-range math should use (e.g. "Build Muscle"),
+  // set directly at creation time instead of inferred from the plan name — needed
+  // for custom/creator-built plans, whose names won't follow the seeded naming
+  // convention getUserGoalKey used to rely on. Null falls back to name-matching
+  // for plans that predate this field.
+  goal            String?
+  // Who built this plan — null for the original seeded plans. Needed once plans
+  // are publicly discoverable, so a shared plan can show "created by X".
+  createdBy       User?        @relation("PlanCreator", fields: [createdByUserId], references: [id])
+  createdByUserId String?
+  days            WorkoutDay[]
+  userHistory     UserPlan[]
 }
 
 // One day inside a plan (e.g. Day 1: Chest and Back).

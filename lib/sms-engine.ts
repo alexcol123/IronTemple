@@ -167,13 +167,16 @@ async function getBestWeightPR(userId: string, exerciseName: string): Promise<nu
 }
 
 // Which goal (Lose Weight / Build Muscle / Get Stronger / Glute Focus) the user is
-// currently training toward, derived from their active plan's name (e.g. "Advanced
-// Build Muscle" -> "Build Muscle"). Drives the rep offset in calculateNextSuggestedWeight.
+// currently training toward. Drives the rep offset in calculateNextSuggestedWeight.
+// Prefers the plan's explicit `goal` field (set at creation for custom/creator-built
+// plans, whose names don't follow a fixed convention) and falls back to matching the
+// plan name's suffix for plans seeded before that field existed.
 export async function getUserGoalKey(userId: string): Promise<string> {
   const userPlan = await prisma.userPlan.findFirst({
     where: { userId, endDate: null },
     include: { plan: true },
   });
+  if (userPlan?.plan.goal) return userPlan.plan.goal;
   const planName = userPlan?.plan.name ?? "";
   for (const goal of GOALS) {
     if (planName.endsWith(goal.planName)) return goal.planName;

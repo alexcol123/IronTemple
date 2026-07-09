@@ -101,6 +101,13 @@ export default function ProfileByIdPage() {
             <p>Member since {fmt(profile.createdAt)}</p>
           </div>
 
+          {profile.planName && (
+            <div className="border rounded-2xl px-3 py-2">
+              <p className="text-xs text-muted-foreground">Currently on</p>
+              <p className="text-sm font-medium">{profile.planName}</p>
+            </div>
+          )}
+
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-1.5">Name</p>
             <Input value={name} onChange={(e) => setName(e.target.value)} className="text-sm" />
