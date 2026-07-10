@@ -32,7 +32,10 @@ export async function GET(req: NextRequest) {
 
   const byName = new Map<string, typeof logs>();
   for (const log of logs) {
-    if (log.sets.length === 0) continue;
+    // plannedExercise is only null for ad-hoc (ADD) entries, and those never
+    // match the "weighted" filter above since there's no PlannedExercise row
+    // to check the type of — this guard is just for TypeScript's benefit.
+    if (log.sets.length === 0 || !log.plannedExercise) continue;
     const name = log.plannedExercise.name;
     if (!byName.has(name)) byName.set(name, []);
     byName.get(name)!.push(log);
@@ -59,16 +62,13 @@ export async function GET(req: NextRequest) {
     const failureSets = exerciseLogs.slice(0, 2).map((l) => heaviestSet(l.sets));
     const referenceSet = failureSets.reduce((best, s) => (s.weight > best.weight ? s : best), failureSets[0]);
 
-    const suggestedWeight = calculateNextSuggestedWeight(
-      referenceSet.weight,
-      referenceSet.reps,
-      mostRecent.plannedExercise.targetReps,
-      goalKey,
-    );
+    // Guaranteed non-null here — only logs with a plannedExercise were added to byName above.
+    const targetReps = mostRecent.plannedExercise!.targetReps;
+    const suggestedWeight = calculateNextSuggestedWeight(referenceSet.weight, referenceSet.reps, targetReps, goalKey);
     const nextTarget =
       suggestedWeight !== null
         ? `Try ${suggestedWeight} lbs for your heaviest set`
-        : `Stay at ${referenceSet.weight} lbs, try for ${nextRepGoal(referenceSet.reps, getEffectiveTargetReps(mostRecent.plannedExercise.targetReps, goalKey))} reps`;
+        : `Stay at ${referenceSet.weight} lbs, try for ${nextRepGoal(referenceSet.reps, getEffectiveTargetReps(targetReps, goalKey))} reps`;
 
     return {
       name,

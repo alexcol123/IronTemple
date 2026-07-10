@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db";
+import { BODY_PARTS } from "@/lib/data/singleBodyPart/body-parts";
+import type { Exercise as LibraryExercise } from "@/lib/data/types";
 
 // Monday of the current real-world week, 00:00 — the anchor for "sessions this week"
-function getMondayOfThisWeek(): Date {
+export function getMondayOfThisWeek(): Date {
   const now = new Date();
   const day = now.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
   const diffFromMonday = day === 0 ? 6 : day - 1;
@@ -11,7 +13,7 @@ function getMondayOfThisWeek(): Date {
   return monday;
 }
 
-export const STATES = ["idle", "onboarding_name", "onboarding_goal", "onboarding_experience", "changing_plan", "workout_ready", "exercise_active", "bonus_day_choice"] as const;
+export const STATES = ["idle", "onboarding_name", "onboarding_goal", "onboarding_experience", "changing_plan", "choosing_channel", "workout_ready", "exercise_active", "bonus_day_choice"] as const;
 export type State = typeof STATES[number];
 
 export const GOALS = [
@@ -35,7 +37,7 @@ const GOAL_REP_OFFSET: Record<string, number> = {
 // The exercise prompt header shows this typical range for the goal instead of the
 // raw baseline reps — baseline is an internal anchor for the offset math, not a
 // number a lifter should ever be told to aim for directly.
-const GOAL_REP_RANGE: Record<string, string> = {
+export const GOAL_REP_RANGE: Record<string, string> = {
   "Get Stronger": "4-6",
   "Build Muscle": "8-12",
   "Glute Focus": "10-15",
@@ -48,13 +50,13 @@ export const EXPERIENCE_TIERS = [
   { label: "Advanced/Semi-Pro", key: "Advanced", days: "5-6 days/week" },
 ] as const;
 
-type SetEntry = { setNumber: number; weight: number; reps: number };
+export type SetEntry = { setNumber: number; weight: number; reps: number };
 
 type ExerciseType = "weighted" | "cardio" | "bodyweight";
 
-type Exercise = { id: string; name: string; targetSets: number; targetReps: number; type?: ExerciseType };
+export type Exercise = { id: string; name: string; targetSets: number; targetReps: number; type?: ExerciseType };
 
-function exerciseLine(e: Exercise, i: number, goalKey?: string) {
+export function exerciseLine(e: Exercise, i: number, goalKey?: string) {
   if (e.type === "cardio") return `${i + 1}. ${e.name} - ${e.targetReps} min`;
   // Weighted exercises show the goal's typical range here too, matching the
   // exercisePrompt header — bodyweight keeps its fixed rep count regardless of goal.
@@ -116,7 +118,7 @@ function exercisePrompt(
 // Matched by exercise NAME, not plannedExerciseId — the same exercise (e.g. "Bench
 // Press") is a different database row in every plan/day, so matching by ID alone
 // would lose someone's history the moment they change plans or tiers.
-async function getLastSets(userId: string, exerciseName: string): Promise<SetEntry[]> {
+export async function getLastSets(userId: string, exerciseName: string): Promise<SetEntry[]> {
   const lastLog = await prisma.exerciseLog.findFirst({
     where: {
       skipped: false,
@@ -136,7 +138,7 @@ async function getLastSets(userId: string, exerciseName: string): Promise<SetEnt
 // what lets one rough day (fatigue, minor tweak) get absorbed without resetting
 // the target, while a real, sustained change still shows up within 2 sessions,
 // since the older session ages out of the window the next time this runs.
-async function getReferenceSet(userId: string, exerciseName: string): Promise<SetEntry | null> {
+export async function getReferenceSet(userId: string, exerciseName: string): Promise<SetEntry | null> {
   const logs = await prisma.exerciseLog.findMany({
     where: {
       skipped: false,
@@ -157,7 +159,7 @@ async function getReferenceSet(userId: string, exerciseName: string): Promise<Se
 
 // Highest weight ever logged for this exercise, any rep count — the classic PR.
 // Matched by name for the same reason as getLastSets above.
-async function getBestWeightPR(userId: string, exerciseName: string): Promise<number | null> {
+export async function getBestWeightPR(userId: string, exerciseName: string): Promise<number | null> {
   const best = await prisma.setLog.findFirst({
     where: {
       exerciseLog: {
@@ -169,6 +171,100 @@ async function getBestWeightPR(userId: string, exerciseName: string): Promise<nu
     orderBy: { weight: "desc" },
   });
   return best?.weight ?? null;
+}
+
+// Same as getBestWeightPR, but for checking PR status after the fact (e.g.
+// building a workout-complete summary once every exercise is already logged).
+// Must exclude the session being summarized, or a set would always "PR"
+// against a history that already contains itself.
+export async function getBestWeightExcludingSession(
+  userId: string,
+  exerciseName: string,
+  excludeSessionId: string,
+): Promise<number | null> {
+  const best = await prisma.setLog.findFirst({
+    where: {
+      exerciseLog: {
+        skipped: false,
+        sessionId: { not: excludeSessionId },
+        session: { userId },
+        plannedExercise: { name: exerciseName },
+      },
+    },
+    orderBy: { weight: "desc" },
+  });
+  return best?.weight ?? null;
+}
+
+// Only catches safe variants (case, whitespace, plural "s"/"es") when matching
+// a freshly-typed ADD name — a real misspelling still starts fresh rather than
+// risk silently merging into the wrong exercise. "es" first, since words
+// ending in sh/ch/ss/x/z pluralize that way ("Push" -> "Pushes", not "Pushs").
+function normalizeExerciseName(name: string): string {
+  const trimmed = name.trim().toLowerCase();
+  if (/(sh|ch|ss|x|z)es$/.test(trimmed)) return trimmed.slice(0, -2);
+  return trimmed.replace(/s$/, "");
+}
+
+type AdHocResolution =
+  | { needsInput: false; name: string; type: ExerciseType; targetSets: number; targetReps: number }
+  | { needsInput: true; name: string };
+
+// Three tiers, in order, so most ADDs need zero extra questions:
+// 1. Already a known exercise in the library (same defaults as picking it in
+//    the builder) — e.g. "Incline Dumbbell Press" already exists as Chest.
+// 2. This user's own past ad-hoc exercise (not the whole library — a small
+//    personal list is far less likely to collide with something unrelated).
+// 3. Genuinely new — nothing to go on, so the caller has to ask.
+async function resolveAdHocExercise(userId: string, typedName: string): Promise<AdHocResolution> {
+  const target = normalizeExerciseName(typedName);
+
+  const libraryMatch = BODY_PARTS.flatMap((bp) => bp.exercises as LibraryExercise[]).find(
+    (e) => normalizeExerciseName(e.name) === target,
+  );
+  if (libraryMatch) {
+    return {
+      needsInput: false,
+      name: libraryMatch.name,
+      type: libraryMatch.type ?? "weighted",
+      targetSets: libraryMatch.sets,
+      targetReps: libraryMatch.reps,
+    };
+  }
+
+  const past = await prisma.exerciseLog.findMany({
+    where: { session: { userId }, customName: { not: null } },
+    orderBy: { session: { date: "desc" } },
+    include: { sets: true },
+  });
+  const pastMatch = past.find((p) => p.customName && normalizeExerciseName(p.customName) === target);
+  if (pastMatch?.type) {
+    return {
+      needsInput: false,
+      name: pastMatch.customName!,
+      type: pastMatch.type,
+      targetSets: pastMatch.sets.length || 3,
+      targetReps: pastMatch.type === "cardio" ? pastMatch.sets[0]?.reps ?? 15 : 5,
+    };
+  }
+
+  return { needsInput: true, name: typedName.trim() };
+}
+
+// Finds where SMS should resume within a session that may already have
+// exercises logged via the other channel (the app is non-linear, so whatever
+// was logged there won't match a stored exerciseIndex). Returns exercises.length
+// if every exercise already has a log — i.e. the workout is already done.
+// fromIndex lets this double as "what's next after the one I just logged",
+// not just "where do I start" — a plain +1 would walk straight into something
+// already done via the app, same bug as trusting the stored index at entry.
+async function findFirstUnloggedIndex(sessionId: string, exercises: Exercise[], fromIndex = 0): Promise<number> {
+  const logs = await prisma.exerciseLog.findMany({ where: { sessionId }, select: { plannedExerciseId: true } });
+  const loggedIds = new Set(logs.map((l) => l.plannedExerciseId));
+  for (let i = fromIndex; i < exercises.length; i++) {
+    if (!loggedIds.has(exercises[i].id)) return i;
+  }
+  return exercises.length;
 }
 
 // Which goal (Lose Weight / Build Muscle / Get Stronger / Glute Focus) the user is
@@ -237,7 +333,7 @@ export function nextRepGoal(currentReps: number, effectiveTarget: number): strin
   return `${currentReps + 1}-${currentReps + 2}`;
 }
 
-function parseSets(text: string): SetEntry[] | null {
+export function parseSets(text: string): SetEntry[] | null {
   const normalized = text.toLowerCase().replace(/,/g, " ").replace(/\s*x\s*/g, "x").trim();
   const tokens = normalized.split(/\s+/);
   const sets: SetEntry[] = [];
@@ -251,13 +347,13 @@ function parseSets(text: string): SetEntry[] | null {
 }
 
 // Grabs the leading number from cardio replies like "20", "20 mins", "35 minutes"
-function parseMinutes(text: string): number | null {
+export function parseMinutes(text: string): number | null {
   const match = text.trim().match(/^(\d+(?:\.\d+)?)/);
   return match ? parseFloat(match[1]) : null;
 }
 
 // Parses bare rep counts for bodyweight exercises, e.g. "15 12 10" -> [15, 12, 10]
-function parseReps(text: string): number[] | null {
+export function parseReps(text: string): number[] | null {
   const tokens = text.trim().replace(/,/g, " ").split(/\s+/);
   const reps: number[] = [];
   for (const token of tokens) {
@@ -270,7 +366,7 @@ function parseReps(text: string): number[] | null {
 // Looks at what someone typed and guesses which format they were actually using,
 // so a mismatch (e.g. weight x reps during a cardio exercise) gets a targeted
 // correction instead of a generic "couldn't read that."
-function detectInputFormat(text: string): "weighted" | "bareNumbers" | "unknown" {
+export function detectInputFormat(text: string): "weighted" | "bareNumbers" | "unknown" {
   const normalized = text.trim().toLowerCase();
   if (/\d+\s*x\s*\d+/.test(normalized)) return "weighted";
   if (/^\d+(\.\d+)?(\s+\d+(\.\d+)?)*$/.test(normalized)) return "bareNumbers";
@@ -329,6 +425,56 @@ export async function handleMessage(
     return { reply: "Reset done - text JOIN to start fresh.", nextState: "idle", context: {} };
   }
 
+  // Cross-channel handoff — if they picked App and then text anything mid-workout,
+  // don't silently process it (or worse, let START spin up a duplicate session).
+  // Ask which channel they actually want to continue on, same question as HERE.
+  const channelCtx = context as { channel?: "app" | "phone"; awaitingReconfirm?: boolean };
+  if (channelCtx.awaitingReconfirm && (input === "1" || input === "2")) {
+    if (input === "2") {
+      const { userId } = context as { userId: string };
+      return {
+        reply: `Here's today's workout: ${process.env.APP_URL}/today/${userId}\n\nContinue there whenever you're ready.`,
+        nextState: state,
+        context: { ...context, channel: "app", awaitingReconfirm: false },
+      };
+    }
+    // Switching to phone. workout_ready has nothing logged yet — just confirm.
+    // exercise_active may already have progress from the app, so resync to the
+    // first exercise that doesn't have a log yet instead of trusting the old index.
+    if (state === "exercise_active") {
+      const { exercises, sessionId, userId } = context as { exercises: Exercise[]; sessionId: string; userId: string };
+      const resyncedIndex = await findFirstUnloggedIndex(sessionId, exercises);
+      if (resyncedIndex >= exercises.length) {
+        return {
+          reply: "Looks like you already finished this one on the app! Text HISTORY to see it, or HERE for your next workout.",
+          nextState: "idle",
+          context: {},
+        };
+      }
+      const current = exercises[resyncedIndex];
+      const lastSets = await getLastSets(userId, current.name);
+      const referenceSet = await getReferenceSet(userId, current.name);
+      const goalKey = await getUserGoalKey(userId);
+      return {
+        reply: `Continuing by text.\n\n${exercisePrompt(current, lastSets, goalKey, referenceSet, resyncedIndex + 1 < exercises.length)}`,
+        nextState: "exercise_active",
+        context: { ...context, channel: "phone", awaitingReconfirm: false, exerciseIndex: resyncedIndex },
+      };
+    }
+    return {
+      reply: "Continuing by text. Type START when you're ready.",
+      nextState: "workout_ready",
+      context: { ...context, channel: "phone", awaitingReconfirm: false },
+    };
+  }
+  if ((state === "workout_ready" || state === "exercise_active") && channelCtx.channel === "app") {
+    return {
+      reply: "Continue on your phone or the app?\n1. Phone\n2. App",
+      nextState: state,
+      context: { ...context, awaitingReconfirm: true },
+    };
+  }
+
   // Idle — entry point
   if (state === "idle") {
     if (input === "MENU" || input === "HEY ARNOLD") {
@@ -356,7 +502,7 @@ export async function handleMessage(
           planHistory: {
             where: { endDate: null },
             include: {
-              plan: { include: { days: { include: { exercises: { orderBy: { order: "asc" } } } } } },
+              plan: { include: { days: { include: { exercises: { where: { active: true }, orderBy: { order: "asc" } } } } } },
             },
           },
         },
@@ -388,13 +534,25 @@ export async function handleMessage(
         };
       }
 
-      const goalKey = await getUserGoalKey(user.id);
-      const list = workoutDay.exercises.map((e, i) => exerciseLine(e, i, goalKey)).join("\n");
+      // Only nudge on the very first HERE ever (no prior sessions at all) —
+      // a passive reminder, not a gate, so it never blocks reaching a workout.
+      const everLoggedASession = (await prisma.workoutSession.count({ where: { userId: user.id } })) > 0;
+      const saveReminder = everLoggedASession
+        ? ""
+        : `\n\n(Haven't saved this number yet? Save it as 'Iron Temple Coach' so it's easy to find later.)`;
 
       return {
-        reply: `Hey ${user.name}!\nDay ${nextDayNumber} of ${activePlan.plan.days.length} this week: ${workoutDay.name}\n\n${list}\n\nType START when ready.`,
-        nextState: "workout_ready",
-        context: { userId: user.id, workoutDayId: workoutDay.id, exercises: workoutDay.exercises, exerciseIndex: 0 },
+        reply: `Continue on your phone or the app?\n1. Phone\n2. App${saveReminder}`,
+        nextState: "choosing_channel",
+        context: {
+          userId: user.id,
+          workoutDayId: workoutDay.id,
+          exercises: workoutDay.exercises,
+          userName: user.name,
+          dayName: workoutDay.name,
+          nextDayNumber,
+          totalDays: activePlan.plan.days.length,
+        },
       };
     }
 
@@ -416,7 +574,49 @@ export async function handleMessage(
       };
     }
 
-    return { reply: "Type JOIN to sign up or HERE to start your workout.", nextState: "idle" };
+    // Unrecognized input — point a member at what they can actually do instead
+    // of telling them to sign up again; only ask a non-member to JOIN.
+    const existingUser = await prisma.user.findUnique({ where: { phone } });
+    if (existingUser) {
+      return { reply: "Type HERE to start your workout, or APP for everything else.", nextState: "idle" };
+    }
+    return { reply: "Type JOIN to sign up.", nextState: "idle" };
+  }
+
+  // Choosing channel — phone keeps the same text-driven flow as always; app
+  // sends a link to a read-only page showing today's workout. Either way lands
+  // back in workout_ready with the same context, so texting START still works
+  // regardless of which one they picked.
+  if (state === "choosing_channel") {
+    const { userId, workoutDayId, exercises, userName, dayName, nextDayNumber, totalDays } = context as {
+      userId: string;
+      workoutDayId: string;
+      exercises: Exercise[];
+      userName: string;
+      dayName: string;
+      nextDayNumber: number;
+      totalDays: number;
+    };
+
+    if (input !== "1" && input !== "2") {
+      return { reply: "Reply 1 for phone or 2 for app.", nextState: "choosing_channel", context };
+    }
+
+    if (input === "1") {
+      const goalKey = await getUserGoalKey(userId);
+      const list = exercises.map((e, i) => exerciseLine(e, i, goalKey)).join("\n");
+      return {
+        reply: `Hey ${userName}!\nDay ${nextDayNumber} of ${totalDays} this week: ${dayName}\n\n${list}\n\nType START when ready.`,
+        nextState: "workout_ready",
+        context: { userId, workoutDayId, exercises, exerciseIndex: 0, channel: "phone" },
+      };
+    }
+
+    return {
+      reply: `Here's today's workout: ${process.env.APP_URL}/today/${userId}\n\nType START when you're ready to log.`,
+      nextState: "workout_ready",
+      context: { userId, workoutDayId, exercises, exerciseIndex: 0, channel: "app" },
+    };
   }
 
   // Bonus day — picked an extra session on an off day
@@ -484,7 +684,7 @@ export async function handleMessage(
       data: { name, phone, planHistory: { create: { planId: plan.id } } },
     });
     return {
-      reply: `You're all set, ${name}! You're on ${plan.name} - ${tier.days}.\nType HERE when you're at the gym to start.`,
+      reply: `You're all set, ${name}! You're on ${plan.name} - ${tier.days}.\n\nSave this number as 'Iron Temple Coach' so you always know it's us.\n\nType HERE when you're at the gym to start.`,
       nextState: "idle",
       context: { userId: user.id },
     };
@@ -494,15 +694,29 @@ export async function handleMessage(
   if (state === "workout_ready") {
     if (input === "START") {
       const { exercises, userId, workoutDayId } = context as { exercises: Exercise[]; userId: string; workoutDayId: string };
-      const session = await prisma.workoutSession.create({ data: { userId, workoutDayId } });
-      const first = exercises[0];
+      // Reuse an already-in-progress session for this day rather than always
+      // creating a new one — the app may have already started (and logged
+      // some of) this exact session before this text ever arrived.
+      let session = await prisma.workoutSession.findFirst({ where: { userId, workoutDayId }, orderBy: { date: "desc" } });
+      if (!session) {
+        session = await prisma.workoutSession.create({ data: { userId, workoutDayId } });
+      }
+      const startIndex = await findFirstUnloggedIndex(session.id, exercises);
+      if (startIndex >= exercises.length) {
+        return {
+          reply: "Looks like you already finished this one on the app! Text HISTORY to see it, or HERE for your next workout.",
+          nextState: "idle",
+          context: {},
+        };
+      }
+      const first = exercises[startIndex];
       const lastSets = await getLastSets(userId, first.name);
       const referenceSet = await getReferenceSet(userId, first.name);
       const goalKey = await getUserGoalKey(userId);
       return {
-        reply: exercisePrompt(first, lastSets, goalKey, referenceSet, exercises.length > 1),
+        reply: exercisePrompt(first, lastSets, goalKey, referenceSet, startIndex + 1 < exercises.length),
         nextState: "exercise_active",
-        context: { ...context, sessionId: session.id, exerciseIndex: 0 },
+        context: { ...context, sessionId: session.id, exerciseIndex: startIndex },
       };
     }
     return { reply: "Type START when you're ready.", nextState: "workout_ready", context };
@@ -510,20 +724,262 @@ export async function handleMessage(
 
   // Exercise active — log sets or skip
   if (state === "exercise_active") {
-    const { exercises, sessionId, exerciseIndex, userId } = context as {
+    const { exercises, sessionId, exerciseIndex, userId, workoutDayId, pendingAdHoc, pendingKeep, pendingAdHocType, pendingAdHocSets } = context as {
       exercises: Exercise[];
       sessionId: string;
       exerciseIndex: number;
       userId: string;
+      workoutDayId: string;
+      pendingAdHoc?: { name: string; type: ExerciseType; targetSets: number; targetReps: number };
+      pendingKeep?: { name: string; type: ExerciseType; targetSets: number; targetReps: number; workoutDayId: string };
+      pendingAdHocType?: { name: string };
+      pendingAdHocSets?: { name: string; type: ExerciseType };
     };
     const current = exercises[exerciseIndex];
+    const hasNext = exerciseIndex + 1 < exercises.length;
+
+    // Something extra was logged (ADD) and this plan belongs to them — offer to
+    // make it permanent. Only offered to the plan's own creator; a subscriber
+    // following someone else's plan can't silently edit their shared template.
+    if (pendingKeep) {
+      if (input === "YES") {
+        const maxOrder = await prisma.plannedExercise.aggregate({
+          where: { workoutDayId: pendingKeep.workoutDayId, active: true },
+          _max: { order: true },
+        });
+        await prisma.plannedExercise.create({
+          data: {
+            name: pendingKeep.name,
+            targetSets: pendingKeep.targetSets,
+            targetReps: pendingKeep.targetReps,
+            type: pendingKeep.type,
+            order: (maxOrder._max.order ?? 0) + 1,
+            workoutDayId: pendingKeep.workoutDayId,
+          },
+        });
+      }
+      const lastSets = await getLastSets(userId, current.name);
+      const referenceSet = await getReferenceSet(userId, current.name);
+      const goalKey = await getUserGoalKey(userId);
+      return {
+        reply: `${input === "YES" ? `Added ${pendingKeep.name} to your plan.` : "No problem, just a one-time log."}\n\n${exercisePrompt(current, lastSets, goalKey, referenceSet, hasNext)}`,
+        nextState: "exercise_active",
+        context: { ...context, pendingKeep: undefined },
+      };
+    }
+
+    // New exercise name, never seen before (not in the library, not in this
+    // user's own ad-hoc history) — nothing to infer, so ask once. Answer gets
+    // remembered via resolveAdHocExercise's personal-history check next time.
+    if (pendingAdHocType) {
+      const typeMap: Record<string, ExerciseType> = { "1": "weighted", "2": "bodyweight", "3": "cardio" };
+      const type = typeMap[input];
+      if (!type) {
+        return {
+          reply: `Reply 1 (weighted, like Bench Press), 2 (bodyweight, like Push-ups), or 3 (cardio, like Treadmill) for ${pendingAdHocType.name}.`,
+          nextState: "exercise_active",
+          context,
+        };
+      }
+      // Cardio has no real "sets" concept (see the CARDIO comment in
+      // lib/data/singleBodyPart/body-parts.ts) — skip straight to logging.
+      if (type === "cardio") {
+        const adHocExercise: Exercise = { id: "", name: pendingAdHocType.name, targetSets: 1, targetReps: 15, type };
+        const goalKey = await getUserGoalKey(userId);
+        const lastSets = await getLastSets(userId, pendingAdHocType.name);
+        const referenceSet = await getReferenceSet(userId, pendingAdHocType.name);
+        return {
+          reply: exercisePrompt(adHocExercise, lastSets, goalKey, referenceSet, false),
+          nextState: "exercise_active",
+          context: {
+            ...context,
+            pendingAdHocType: undefined,
+            pendingAdHoc: { name: pendingAdHocType.name, type, targetSets: 1, targetReps: 15 },
+          },
+        };
+      }
+      return {
+        reply: `Got it. How many sets for ${pendingAdHocType.name}? (e.g. 3)`,
+        nextState: "exercise_active",
+        context: { ...context, pendingAdHocType: undefined, pendingAdHocSets: { name: pendingAdHocType.name, type } },
+      };
+    }
+
+    if (pendingAdHocSets) {
+      const setsCount = parseInt(input, 10);
+      if (!setsCount || setsCount < 1) {
+        return { reply: `Reply with a number of sets, e.g. 3.`, nextState: "exercise_active", context };
+      }
+      const { name, type } = pendingAdHocSets;
+      const targetReps = type === "cardio" ? 15 : 5;
+      const adHocExercise: Exercise = { id: "", name, targetSets: setsCount, targetReps, type };
+      const goalKey = await getUserGoalKey(userId);
+      const lastSets = await getLastSets(userId, name);
+      const referenceSet = await getReferenceSet(userId, name);
+      return {
+        reply: exercisePrompt(adHocExercise, lastSets, goalKey, referenceSet, false),
+        nextState: "exercise_active",
+        context: { ...context, pendingAdHocSets: undefined, pendingAdHoc: { name, type, targetSets: setsCount, targetReps } },
+      };
+    }
+
+    // Logging sets for something just ADDed that wasn't part of today's plan.
+    if (pendingAdHoc) {
+      if (input === "SKIP") {
+        const lastSets = await getLastSets(userId, current.name);
+        const referenceSet = await getReferenceSet(userId, current.name);
+        const goalKey = await getUserGoalKey(userId);
+        return {
+          reply: `Okay, not logging ${pendingAdHoc.name}.\n\n${exercisePrompt(current, lastSets, goalKey, referenceSet, hasNext)}`,
+          nextState: "exercise_active",
+          context: { ...context, pendingAdHoc: undefined },
+        };
+      }
+
+      let sets: SetEntry[] | null;
+      if (pendingAdHoc.type === "cardio") {
+        const minutes = parseMinutes(text);
+        if (minutes === null) {
+          return {
+            reply: `Reply with how long you went in minutes (e.g. 20), or SKIP to cancel adding ${pendingAdHoc.name}.`,
+            nextState: "exercise_active",
+            context,
+          };
+        }
+        sets = [{ setNumber: 1, weight: 0, reps: minutes }];
+      } else if (pendingAdHoc.type === "bodyweight") {
+        const reps = parseReps(text);
+        if (!reps) {
+          return {
+            reply: `Reply with your reps per set (e.g. 15 12 10), or SKIP to cancel adding ${pendingAdHoc.name}.`,
+            nextState: "exercise_active",
+            context,
+          };
+        }
+        sets = reps.map((r, i) => ({ setNumber: i + 1, weight: 0, reps: r }));
+      } else {
+        sets = parseSets(text);
+        if (!sets) {
+          return {
+            reply: `Couldn't read that. Use format: 150x10 160x8, or SKIP to cancel adding ${pendingAdHoc.name}.`,
+            nextState: "exercise_active",
+            context,
+          };
+        }
+      }
+
+      await prisma.exerciseLog.create({
+        data: {
+          sessionId,
+          customName: pendingAdHoc.name,
+          type: pendingAdHoc.type,
+          order: exerciseIndex + 1,
+          skipped: false,
+          sets: { create: sets },
+        },
+      });
+
+      const day = await prisma.workoutDay.findUnique({ where: { id: workoutDayId }, include: { plan: true } });
+      if (day?.plan.createdByUserId === userId) {
+        return {
+          reply: `Logged ${pendingAdHoc.name}. Want to keep it in your ${day.name} day going forward? Reply YES or NO.`,
+          nextState: "exercise_active",
+          context: {
+            ...context,
+            pendingAdHoc: undefined,
+            pendingKeep: {
+              name: pendingAdHoc.name,
+              type: pendingAdHoc.type,
+              targetSets: pendingAdHoc.targetSets,
+              targetReps: pendingAdHoc.targetReps,
+              workoutDayId,
+            },
+          },
+        };
+      }
+      const lastSets = await getLastSets(userId, current.name);
+      const referenceSet = await getReferenceSet(userId, current.name);
+      const goalKey = await getUserGoalKey(userId);
+      return {
+        reply: `Logged ${pendingAdHoc.name}.\n\n${exercisePrompt(current, lastSets, goalKey, referenceSet, hasNext)}`,
+        nextState: "exercise_active",
+        context: { ...context, pendingAdHoc: undefined },
+      };
+    }
+
+    // ADD — log something extra that wasn't part of today's plan, without
+    // disturbing where they are in the real workout. Resolved in order: already
+    // a known library exercise, then this user's own past ad-hoc exercises, and
+    // only asks (type + sets) if it's genuinely new on both counts.
+    const addMatch = text.trim().match(/^ADD\s+(.+)$/i);
+    if (addMatch) {
+      const resolved = await resolveAdHocExercise(userId, addMatch[1]);
+      if (resolved.needsInput) {
+        return {
+          reply: `New one! Is ${resolved.name} 1) weighted (like Bench Press), 2) bodyweight (like Push-ups), or 3) cardio (like Treadmill)? Reply with the number.`,
+          nextState: "exercise_active",
+          context: { ...context, pendingAdHocType: { name: resolved.name } },
+        };
+      }
+      const goalKey = await getUserGoalKey(userId);
+      const lastSets = await getLastSets(userId, resolved.name);
+      const referenceSet = await getReferenceSet(userId, resolved.name);
+      const adHocExercise: Exercise = {
+        id: "",
+        name: resolved.name,
+        targetSets: resolved.targetSets,
+        targetReps: resolved.targetReps,
+        type: resolved.type,
+      };
+      return {
+        reply: exercisePrompt(adHocExercise, lastSets, goalKey, referenceSet, false),
+        nextState: "exercise_active",
+        context: {
+          ...context,
+          pendingAdHoc: { name: resolved.name, type: resolved.type, targetSets: resolved.targetSets, targetReps: resolved.targetReps },
+        },
+      };
+    }
+
+    // REMOVE — take an exercise out of the plan going forward. Only works if
+    // this person owns the plan (built it themselves); soft-deleted (active:
+    // false), never hard-deleted, since past logs may already reference it and
+    // history should keep showing what really happened.
+    const removeMatch = text.trim().match(/^REMOVE\s+(.+)$/i);
+    if (removeMatch) {
+      const day = await prisma.workoutDay.findUnique({
+        where: { id: workoutDayId },
+        include: { plan: true, exercises: { where: { active: true } } },
+      });
+      if (!day || day.plan.createdByUserId !== userId) {
+        return {
+          reply: "You can only remove exercises from a plan you built yourself.",
+          nextState: "exercise_active",
+          context,
+        };
+      }
+      const target = removeMatch[1].trim().toLowerCase();
+      const found = day.exercises.find((e) => e.name.toLowerCase() === target);
+      if (!found) {
+        return { reply: `Couldn't find "${removeMatch[1].trim()}" in today's plan.`, nextState: "exercise_active", context };
+      }
+      await prisma.plannedExercise.update({ where: { id: found.id }, data: { active: false } });
+      const lastSets = await getLastSets(userId, current.name);
+      const referenceSet = await getReferenceSet(userId, current.name);
+      const goalKey = await getUserGoalKey(userId);
+      return {
+        reply: `Removed ${found.name} from your ${day.name} day going forward.\n\n${exercisePrompt(current, lastSets, goalKey, referenceSet, hasNext)}`,
+        nextState: "exercise_active",
+        context,
+      };
+    }
 
     if (input === "MENU" || input === "HEY ARNOLD") {
       const lastSets = await getLastSets(userId, current.name);
       const referenceSet = await getReferenceSet(userId, current.name);
       const goalKey = await getUserGoalKey(userId);
       return {
-        reply: `Here's where you're at:\n\n${exercisePrompt(current, lastSets, goalKey, referenceSet, exerciseIndex + 1 < exercises.length)}\n\n(Text HISTORY anytime to see your past workouts.)`,
+        reply: `Here's where you're at:\n\n${exercisePrompt(current, lastSets, goalKey, referenceSet, hasNext)}\n\n(Text HISTORY anytime to see your past workouts.)`,
         nextState: "exercise_active",
         context,
       };
@@ -612,6 +1068,11 @@ export async function handleMessage(
 
       // Check PR against history BEFORE logging today's sets
       const previousBestWeight = await getBestWeightPR(userId, current.name);
+      const newMaxWeight = Math.max(...sets.map((s) => s.weight));
+      // A real PR needs something to beat — first time ever logging this
+      // exercise isn't a PR, just a baseline (matches the completion summary's
+      // hitPR flag on ExerciseLog, read by the app to badge PR'd exercises).
+      const isWeightPR = previousBestWeight !== null && newMaxWeight > previousBestWeight;
 
       await prisma.exerciseLog.create({
         data: {
@@ -619,23 +1080,23 @@ export async function handleMessage(
           plannedExerciseId: current.id,
           order: exerciseIndex + 1,
           skipped: false,
+          hitPR: isWeightPR,
           sets: { create: sets },
         },
       });
 
-      const newMaxWeight = Math.max(...sets.map((s) => s.weight));
-
-      const isWeightPR = previousBestWeight === null || newMaxWeight > previousBestWeight;
-
       // Only a real PR gets called out here — the coaching challenge (recent
       // heavy set vs. target) only ever shows in the next session's opening
       // prompt (see exercisePrompt), not immediately after logging.
-      if (isWeightPR && previousBestWeight !== null) {
+      if (isWeightPR) {
         prMessage = `\n\nCongrats, new PR! ${newMaxWeight} lbs (up from ${previousBestWeight}).`;
       }
     }
 
-    const nextIndex = exerciseIndex + 1;
+    // Skip anything already logged via the app in the meantime — a plain +1
+    // would walk straight into it, same class of bug as trusting a stale index
+    // when first switching channels.
+    const nextIndex = await findFirstUnloggedIndex(sessionId, exercises, exerciseIndex + 1);
     if (nextIndex >= exercises.length) {
       const logs = await prisma.exerciseLog.findMany({
         where: { sessionId },
@@ -645,10 +1106,13 @@ export async function handleMessage(
 
       const lines = logs.map((log) => {
         const ex = exercises.find((e) => e.id === log.plannedExerciseId);
-        const name = ex?.name ?? "Unknown";
+        // Ad-hoc (ADD) entries have no match in the in-memory plan array — their
+        // name and type live in customName/type instead.
+        const name = ex?.name ?? log.customName ?? "Unknown";
+        const type = ex?.type ?? log.type;
         if (log.skipped) return `- ${name}: SKIPPED`;
-        if (ex?.type === "cardio") return `- ${name}: ${log.sets[0]?.reps ?? "?"} min`;
-        if (ex?.type === "bodyweight") {
+        if (type === "cardio") return `- ${name}: ${log.sets[0]?.reps ?? "?"} min`;
+        if (type === "bodyweight") {
           const reps = log.sets.map((s) => s.reps);
           const total = reps.reduce((a, b) => a + b, 0);
           return `- ${name}: ${total} reps (${reps.join(", ")})`;

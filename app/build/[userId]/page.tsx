@@ -46,6 +46,10 @@ export default function BuildPage() {
   // part's exercises combined in one long list. Keyed by day index.
   const [activeTab, setActiveTab] = useState<Record<number, string>>({});
 
+  // Filters the active tab's exercise list by name (e.g. "bench" inside Chest) —
+  // keyed by day index since each day has its own independent tab/search.
+  const [search, setSearch] = useState<Record<number, string>>({});
+
   // Cardio ("reps" = minutes) and bodyweight reps are both real, literal numbers
   // someone actually performs — unlike weighted reps (an internal math anchor),
   // these are worth letting the builder customize. Keyed by exercise name, shared
@@ -309,8 +313,17 @@ export default function BuildPage() {
                         </div>
                       )}
 
+                      <Input
+                        value={search[dayIndex] ?? ""}
+                        onChange={(e) => setSearch((prev) => ({ ...prev, [dayIndex]: e.target.value }))}
+                        placeholder="Search exercises..."
+                        className="text-xs h-8 mb-2"
+                      />
+
                       <div className="flex flex-col gap-1">
-                        {visibleExercises.map((ex) => {
+                        {visibleExercises
+                          .filter((ex) => ex.name.toLowerCase().includes((search[dayIndex] ?? "").toLowerCase()))
+                          .map((ex) => {
                           const checked = day.selectedExercises.includes(ex.name);
                           return (
                             <div key={ex.name} className="flex items-center gap-2 text-sm">

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { ReadNav } from "@/components/read-nav";
 
 const ITEMS = [
+  { label: "How It Works", desc: "Quick videos on using the app", path: "how-it-works" },
   { label: "My Info", desc: "Name, goal, experience level", path: "profile" },
   { label: "Build Your Workout", desc: "Create your own custom split", path: "build" },
   { label: "Exercise Guide", desc: "How to do each move", path: "exercises" },

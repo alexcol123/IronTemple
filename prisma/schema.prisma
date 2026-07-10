@@ -76,6 +76,11 @@ model PlannedExercise {
   order        Int
   workoutDay   WorkoutDay    @relation(fields: [workoutDayId], references: [id])
   workoutDayId String
+  // Soft-delete for REMOVE — never hard-deleted, since existing ExerciseLog rows
+  // may already reference it and history should keep showing what really happened.
+  // Forward-looking queries (today's/future workouts) filter to active: true;
+  // history reads don't, so past sessions still show exercises later removed.
+  active       Boolean       @default(true)
   logs         ExerciseLog[]
 }
 
@@ -103,15 +108,29 @@ model WorkoutSession {
   exercises    ExerciseLog[]
 }
 
-// The user's result on one exercise during a session. skipped = machine was busy.
+// The user's result on one exercise during a session. skipped = machine busy the
+// whole session (see BUSY, which just reorders instead of ending up here).
 model ExerciseLog {
-  id                String          @id @default(uuid())
+  id                String           @id @default(uuid())
   order             Int
-  skipped           Boolean         @default(false)
-  session           WorkoutSession  @relation(fields: [sessionId], references: [id])
+  skipped           Boolean          @default(false)
+  session           WorkoutSession   @relation(fields: [sessionId], references: [id])
   sessionId         String
-  plannedExercise   PlannedExercise @relation(fields: [plannedExerciseId], references: [id])
-  plannedExerciseId String
+  // Null when this is an ad-hoc exercise (ADD) logged on the spot, not part of
+  // the plan — customName holds its name instead. Never both null.
+  plannedExercise   PlannedExercise? @relation(fields: [plannedExerciseId], references: [id])
+  plannedExerciseId String?
+  customName        String?
+  // Only set alongside customName — type normally comes from plannedExercise,
+  // but ad-hoc entries have no such row to read it from.
+  type              ExerciseType?
+  // Set once, at the moment a set beats the pre-existing best weight for this
+  // exercise. Recorded here rather than recomputed later because an additive
+  // edit (logging more sets onto an exercise already logged this session)
+  // reuses this same row — comparing "this session's sets vs. other sessions"
+  // after the fact would wrongly exclude the earlier sets in this same log
+  // that the new ones actually need to beat.
+  hitPR             Boolean          @default(false)
   sets              SetLog[]
 }
 

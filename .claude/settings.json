@@ -1,7 +1,20 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsx -e ' *)"
+      "Bash(npx tsx -e ' *)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s -X POST http://localhost:3000/api/message -H 'Content-Type: application/json' -d '{\"phone\":\"+15555550499\",\"text\":\"JOIN\",\"state\":\"idle\",\"context\":{}}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/message -H 'Content-Type: application/json' -d '{\"phone\":\"+15555550499\",\"text\":\"Casey\",\"state\":\"onboarding_name\",\"context\":{}}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/message -H 'Content-Type: application/json' -d '{\"phone\":\"+15555550499\",\"text\":\"4\",\"state\":\"onboarding_goal\",\"context\":__TRACKED_VAR__}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/message -H 'Content-Type: application/json' -d '{\"phone\":\"+15555550499\",\"text\":\"1\",\"state\":\"onboarding_experience\",\"context\":__TRACKED_VAR__}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/message -H 'Content-Type: application/json' -d '{\"phone\":\"+15555550599\",\"text\":\"JOIN\",\"state\":\"idle\",\"context\":{}}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/message -H 'Content-Type: application/json' -d '{\"phone\":\"+15555550599\",\"text\":\"Taylor\",\"state\":\"onboarding_name\",\"context\":{}}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/message -H 'Content-Type: application/json' -d '{\"phone\":\"+15555550599\",\"text\":\"2\",\"state\":\"onboarding_goal\",\"context\":__TRACKED_VAR__}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/message -H 'Content-Type: application/json' -d '{\"phone\":\"+15555550599\",\"text\":\"2\",\"state\":\"onboarding_experience\",\"context\":__TRACKED_VAR__}')",
+      "Bash(curl -s \"http://localhost:3000/api/user?phone=%2B15555550599\")",
+      "Bash(curl -s \"http://localhost:3000/api/today/session?userId=f2d797fd-15ff-4510-ae8a-64a60b3c6b51\")",
+      "Bash(npx tsc *)",
+      "Bash(npx eslint *)"
     ]
   }
 }

@@ -171,6 +171,15 @@ The pitch requires Stripe recurring billing before you can demo it live:
 
 ## Feature Backlog
 
+### Real Videos for the How It Works Page
+
+`/how-it-works/{userId}` (linked from Menu) currently plays one placeholder clip (a public sample video) just to prove the layout works. Once real screen-capture videos are recorded, swap them in:
+
+- Record portrait/normal phone orientation, not sideways — the app's own UI is already styled to look like a phone held upright, and viewers will most likely be watching on their own phone in portrait too.
+- The video element is currently set to `aspect-video` (16:9 landscape), which will letterbox a portrait clip — change it to a vertical ratio (e.g. `aspect-[9/16]`) once the real files are in.
+- Plan is ~4 short videos covering the main things someone can do in the app (logging sets, ADD/SKIP/BUSY, switching to the app mid-workout, etc.) — just add more entries to the `VIDEOS` array in that page.
+- Hosting: lean toward YouTube (unlisted, ads turned off per-video in YouTube Studio) over bundling raw files into the Vercel deploy or Supabase Storage — video bandwidth is free and scales on YouTube regardless of view count, unlike either of those.
+
 ### Optional Public Username for the History Link
 
 Right now the history link (`/history/{userId}`) is private by accident — a UUID nobody could guess, only useful because it's sent directly to the person. Idea: let people optionally choose a public username (e.g. `cathyny25`) so they can share/brag about their progress with a memorable link instead of a random ID.

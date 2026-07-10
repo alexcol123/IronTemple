@@ -10,6 +10,8 @@ const COMMANDS = [
   { cmd: "START", desc: "Begin your exercise list", when: "After HERE" },
   { cmd: "SKIP", desc: "Not doing this exercise today", when: "During a workout" },
   { cmd: "BUSY", desc: "Equipment's taken — swap it down one spot, come back shortly", when: "During a workout" },
+  { cmd: "ADD", desc: "Log something extra, e.g. ADD Cable Crossovers", when: "During a workout" },
+  { cmd: "REMOVE", desc: "Take an exercise out of your own plan going forward, e.g. REMOVE Barbell Row", when: "During a workout" },
   { cmd: "DONE", desc: "Log your recommended time automatically", when: "During cardio" },
   { cmd: "HISTORY", desc: "Get a link to your workout history", when: "Any time" },
   { cmd: "APP", desc: "Get a link to your full app", when: "Any time" },

@@ -2,13 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { ReadNav } from "@/components/read-nav";
 
 type SetLog = { setNumber: number; weight: number; reps: number };
 type ExerciseLog = {
   id: string;
   skipped: boolean;
-  plannedExercise: { name: string };
+  // null for ad-hoc (ADD) entries logged mid-workout — customName holds the
+  // name instead, since there's no PlannedExercise row for those.
+  plannedExercise: { name: string } | null;
+  customName: string | null;
   sets: SetLog[];
 };
 type Session = {
@@ -17,6 +21,12 @@ type Session = {
   workoutDay: { name: string; day: number; plan: { name: string } };
   exercises: ExerciseLog[];
 };
+
+// Mirrors the /api/today/session response the today page consumes — just
+// enough here to drive a "Start/Continue Workout" card, not the full detail view.
+type TodaySession =
+  | { allDone: true; totalDays: number }
+  | { allDone: false; dayName: string; nextDayNumber: number; totalDays: number; exercises: { status: "pending" | "done" | "skipped" }[] };
 
 function getMondayOf(date: Date): Date {
   const d = new Date(date);
@@ -32,6 +42,7 @@ export default function HistoryByIdPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week, etc.
+  const [todaySession, setTodaySession] = useState<TodaySession | null | undefined>(undefined);
 
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
@@ -40,6 +51,16 @@ export default function HistoryByIdPage() {
       .then((data) => setSessions(data.sessions ?? []))
       .finally(() => setLoading(false));
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    fetch(`/api/today/session?userId=${encodeURIComponent(userId)}`)
+      .then((r) => r.json())
+      .then((data) => setTodaySession(data.session));
+  }, [userId]);
+
+  const doneCount = todaySession && !todaySession.allDone ? todaySession.exercises.filter((e) => e.status !== "pending").length : 0;
+  const totalCount = todaySession && !todaySession.allDone ? todaySession.exercises.length : 0;
 
   // Compute the Mon–Sun window for the current offset
   const thisMonday = getMondayOf(new Date());
@@ -87,6 +108,30 @@ export default function HistoryByIdPage() {
         </div>
 
         <ReadNav userId={userId} />
+
+        {/* Today's workout CTA */}
+        {todaySession && !todaySession.allDone && (
+          <Link
+            href={`/today/${userId}`}
+            className="mx-4 mt-3 rounded-2xl border px-4 py-3 flex items-center justify-between hover:bg-muted transition-colors"
+          >
+            <div>
+              <p className="text-sm font-semibold">{doneCount === 0 ? "Start Workout" : "Continue Workout"}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Day {todaySession.nextDayNumber}: {todaySession.dayName}
+                {doneCount > 0 && ` · ${doneCount} of ${totalCount} done`}
+              </p>
+            </div>
+            <span className="text-muted-foreground">→</span>
+          </Link>
+        )}
+        {todaySession && todaySession.allDone && (
+          <div className="mx-4 mt-3 rounded-2xl border px-4 py-3 text-center">
+            <p className="text-xs text-muted-foreground">
+              All {todaySession.totalDays} sessions complete this week — nice work!
+            </p>
+          </div>
+        )}
 
         {/* Week navigation */}
         <div className="px-4 py-2 border-b flex items-center justify-between">
@@ -152,7 +197,7 @@ export default function HistoryByIdPage() {
                     {session.exercises.map((ex) => (
                       <div key={ex.id}>
                         <p className="text-xs font-semibold">
-                          {ex.plannedExercise.name}
+                          {ex.plannedExercise?.name ?? ex.customName}
                           {ex.skipped && (
                             <span className="ml-2 text-muted-foreground font-normal">
                               skipped

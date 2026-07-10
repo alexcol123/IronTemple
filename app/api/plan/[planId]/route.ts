@@ -8,7 +8,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plan
     where: { id: planId },
     include: {
       createdBy: { select: { name: true } },
-      days: { orderBy: { day: "asc" }, include: { exercises: { orderBy: { order: "asc" } } } },
+      days: { orderBy: { day: "asc" }, include: { exercises: { where: { active: true }, orderBy: { order: "asc" } } } },
     },
   });
   if (!plan) return NextResponse.json({ plan: null }, { status: 404 });

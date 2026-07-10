@@ -7,7 +7,10 @@ type SetLog = { setNumber: number; weight: number; reps: number };
 type ExerciseLog = {
   id: string;
   skipped: boolean;
-  plannedExercise: { name: string };
+  // null for ad-hoc (ADD) entries logged mid-workout — customName holds the
+  // name instead, since there's no PlannedExercise row for those.
+  plannedExercise: { name: string } | null;
+  customName: string | null;
   sets: SetLog[];
 };
 type Session = {
@@ -168,7 +171,7 @@ export default function HistoryPage() {
                     {session.exercises.map((ex) => (
                       <div key={ex.id}>
                         <p className="text-xs font-semibold">
-                          {ex.plannedExercise.name}
+                          {ex.plannedExercise?.name ?? ex.customName}
                           {ex.skipped && (
                             <span className="ml-2 text-muted-foreground font-normal">
                               skipped

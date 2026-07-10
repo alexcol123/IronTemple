@@ -60,7 +60,8 @@ export async function GET(req: NextRequest) {
   // Group sets by exercise → track max weight per day
   const exerciseMap = new Map<string, Map<string, number>>();
   for (const set of sets) {
-    const name = set.exerciseLog.plannedExercise.name;
+    // customName covers ad-hoc (ADD) entries, which have no plannedExercise row.
+    const name = set.exerciseLog.plannedExercise?.name ?? set.exerciseLog.customName ?? "Unknown";
     const day = set.exerciseLog.session.date.toDateString(); // e.g. "Mon Jun 02 2026"
     if (!exerciseMap.has(name)) exerciseMap.set(name, new Map());
     const dayMap = exerciseMap.get(name)!;
