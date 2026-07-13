@@ -5,10 +5,11 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { BODY_PARTS } from "@/lib/data/singleBodyPart/body-parts";
-import type { Exercise as LibraryExercise } from "@/lib/data/types";
 
 type ExerciseStatus = "pending" | "done" | "skipped";
+// gifUrl/instructions/videoUrls/imageUrls now come straight from the database
+// (ExerciseLibrary, joined via PlannedExercise.libraryExerciseId) instead of a
+// client-side match against a static file.
 type SessionExercise = {
   id: string;
   name: string;
@@ -18,10 +19,29 @@ type SessionExercise = {
   status: ExerciseStatus;
   loggedSummary: string | null;
   recommendation: string | null;
+  gifUrl?: string | null;
+  instructions?: string[];
+  videoUrls?: string[];
+  imageUrls?: string[];
 };
 type Session =
   | { allDone: true; totalDays: number }
   | { allDone: false; workoutDayId: string; dayName: string; nextDayNumber: number; totalDays: number; exercises: SessionExercise[] };
+
+// The real exercise picker library, fetched from the database instead of the
+// old static body-parts.ts file.
+type LibraryExercise = {
+  name: string;
+  sets: number;
+  reps: number;
+  type?: string;
+  gifUrl?: string | null;
+  instructions?: string[];
+  videoUrls?: string[];
+  imageUrls?: string[];
+  featured: boolean;
+};
+type LibraryBodyPart = { name: string; exercises: LibraryExercise[] };
 
 type SummaryLine = { text: string; isPR: boolean };
 type Completion = { lines: SummaryLine[]; doneCount: number; totalSets: number; hasPR: boolean };
@@ -34,8 +54,28 @@ const PLACEHOLDER: Record<string, string> = {
 
 // Picked straight from the same body-part library /build uses — the name,
 // type, and target sets/reps are already known, so logging it works exactly
-// like logging a planned exercise, just without a plannedExerciseId.
-type AdHocPick = { name: string; type: string; targetSets: number; targetReps: number };
+// like logging a planned exercise, just without a plannedExerciseId. Carries
+// its own gif/instructions/videos along since there's no plannedExerciseId to
+// join through until it's actually logged.
+type AdHocPick = {
+  name: string;
+  type: string;
+  targetSets: number;
+  targetReps: number;
+  gifUrl?: string | null;
+  instructions?: string[];
+  videoUrls?: string[];
+  imageUrls?: string[];
+};
+
+// Turns a normal youtube.com/watch or youtu.be link (whatever gets pasted in
+// when adding an exercise) into the /embed/ form needed for an inline iframe,
+// so a real tutorial plays right in the how-to panel instead of sending
+// someone to youtube.com and away from the app.
+function getYouTubeEmbedUrl(url: string): string | null {
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/);
+  return match ? `https://www.youtube.com/embed/${match[1]}` : null;
+}
 
 export default function TodayPage() {
   const { userId } = useParams<{ userId: string }>();
@@ -45,11 +85,18 @@ export default function TodayPage() {
   const [picking, setPicking] = useState(false);
   const [pickerBodyPart, setPickerBodyPart] = useState<string | null>(null);
   const [pickerSearch, setPickerSearch] = useState("");
+  // Same reasoning as /build: most body parts have 100+ exercises after the
+  // bulk import, so show only the hand-curated "featured" ones until asked
+  // to see everything. Search bypasses this — it should never be limited by
+  // curation, someone typing a specific name wants to find it regardless.
+  const [pickerExpanded, setPickerExpanded] = useState(false);
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [completion, setCompletion] = useState<Completion | null>(null);
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [libraryBodyParts, setLibraryBodyParts] = useState<LibraryBodyPart[]>([]);
 
   const load = useCallback(() => {
     if (!userId) return;
@@ -62,12 +109,19 @@ export default function TodayPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    fetch("/api/exercise-library")
+      .then((r) => r.json())
+      .then((data) => setLibraryBodyParts(data.bodyParts ?? []));
+  }, []);
+
   function openExercise(id: string) {
     setSelectedId(id);
     setAdHocPick(null);
     setInput("");
     setError("");
     setMessage("");
+    setShowHowTo(false);
   }
 
   function backToList() {
@@ -79,27 +133,41 @@ export default function TodayPage() {
     setInput("");
     setError("");
     setMessage("");
+    setShowHowTo(false);
   }
 
   function openPicker() {
     setPicking(true);
-    setPickerBodyPart(BODY_PARTS[0]?.name ?? null);
+    setPickerBodyPart(libraryBodyParts[0]?.name ?? null);
     setPickerSearch("");
+    setPickerExpanded(false);
   }
 
   function closePicker() {
     setPicking(false);
     setPickerBodyPart(null);
     setPickerSearch("");
+    setPickerExpanded(false);
   }
 
-  function pickAdHocExercise(ex: { name: string; type?: string; sets: number; reps: number }) {
+  function pickAdHocExercise(ex: LibraryExercise) {
     setPicking(false);
     setPickerSearch("");
-    setAdHocPick({ name: ex.name, type: ex.type ?? "weighted", targetSets: ex.sets, targetReps: ex.reps });
+    setPickerExpanded(false);
+    setAdHocPick({
+      name: ex.name,
+      type: ex.type ?? "weighted",
+      targetSets: ex.sets,
+      targetReps: ex.reps,
+      gifUrl: ex.gifUrl,
+      instructions: ex.instructions,
+      videoUrls: ex.videoUrls,
+      imageUrls: ex.imageUrls,
+    });
     setInput("");
     setError("");
     setMessage("");
+    setShowHowTo(false);
   }
 
   async function handleAction(action: "log" | "skip") {
@@ -144,23 +212,45 @@ export default function TodayPage() {
     session && !session.allDone ? session.exercises.find((e) => e.id === selectedId) : undefined;
   const selected = plannedSelected ?? (adHocPick ? { ...adHocPick, status: "pending" as const, loggedSummary: null, recommendation: null } : undefined);
 
+  // Same how-to panel as before selection was ever a picker-level thing —
+  // just the post-selection "How do I do this?" target.
+  const howToTarget = showHowTo && selected ? selected : null;
+  function closeHowTo() {
+    setShowHowTo(false);
+  }
+
   const doneCount = session && !session.allDone ? session.exercises.filter((e) => e.status !== "pending").length : 0;
   const totalCount = session && !session.allDone ? session.exercises.length : 0;
+
+  const pickerSearchTerm = pickerSearch.toLowerCase();
+  const pickerIsSearching = pickerSearchTerm.length > 0;
+  const pickerMatchingSearch = (libraryBodyParts.find((bp) => bp.name === pickerBodyPart)?.exercises ?? []).filter((ex) =>
+    ex.name.toLowerCase().includes(pickerSearchTerm),
+  );
+  const pickerShowAll = pickerExpanded || pickerIsSearching;
+  const pickerDisplayed = pickerShowAll ? pickerMatchingSearch : pickerMatchingSearch.filter((ex) => ex.featured);
+  const pickerHiddenCount = pickerMatchingSearch.length - pickerDisplayed.length;
 
   return (
     <div className="flex items-center justify-center h-screen bg-background overflow-hidden">
       <div className="flex flex-col w-full max-w-sm h-full sm:h-175 sm:border sm:rounded-3xl overflow-hidden sm:shadow-md">
         {/* Header */}
         <div className="px-4 py-3 border-b flex items-center justify-between">
-          {!completion && (selected || picking) ? (
+          {howToTarget ? (
+            <div className="w-10" />
+          ) : !completion && (selected || picking) ? (
             <button onClick={picking ? closePicker : backToList} className="text-xs text-muted-foreground">← Back</button>
           ) : (
             <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground">← Menu</Link>
           )}
           <p className="font-semibold text-sm">
-            {completion ? "Workout Complete!" : picking ? "Add Exercise" : "Today's Workout"}
+            {completion ? "Workout Complete!" : howToTarget ? "How To" : picking ? "Add Exercise" : "Today's Workout"}
           </p>
-          <div className="w-10" />
+          {howToTarget ? (
+            <button onClick={closeHowTo} className="w-10 text-right text-sm text-muted-foreground">✕</button>
+          ) : (
+            <div className="w-10" />
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
@@ -266,11 +356,12 @@ export default function TodayPage() {
             </>
           )}
 
-          {/* Add-exercise picker: same body-part-tabbed library as /build */}
-          {!completion && picking && (
+          {/* Add-exercise picker: same body-part-tabbed library as /build,
+              now sourced from the database instead of a static file */}
+          {!completion && picking && !howToTarget && (
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap gap-1.5">
-                {BODY_PARTS.map((bp) => (
+                {libraryBodyParts.map((bp) => (
                   <button
                     key={bp.name}
                     onClick={() => setPickerBodyPart(bp.name)}
@@ -293,26 +384,84 @@ export default function TodayPage() {
               />
 
               <div className="flex flex-col gap-2">
-                {(BODY_PARTS.find((bp) => bp.name === pickerBodyPart)?.exercises as LibraryExercise[] | undefined)
-                  ?.filter((ex) => ex.name.toLowerCase().includes(pickerSearch.toLowerCase()))
-                  .map((ex) => (
-                    <button
-                      key={ex.name}
-                      onClick={() => pickAdHocExercise(ex)}
-                      className="border rounded-2xl px-4 py-3 flex items-center justify-between text-left hover:bg-muted transition-colors"
-                    >
-                      <p className="text-sm font-medium">{ex.name}</p>
-                      <span className="text-xs text-muted-foreground">
-                        {ex.sets} x {ex.reps} {ex.type === "cardio" ? "min" : ex.type === "bodyweight" ? "reps" : ""}
-                      </span>
-                    </button>
-                  ))}
+                {pickerDisplayed.map((ex) => (
+                  <button
+                    key={ex.name}
+                    onClick={() => pickAdHocExercise(ex)}
+                    className="border rounded-2xl px-4 py-3 flex items-center justify-between text-left hover:bg-muted transition-colors"
+                  >
+                    <p className="text-sm font-medium">{ex.name}</p>
+                    <span className="text-xs text-muted-foreground">
+                      {ex.sets} x {ex.reps} {ex.type === "cardio" ? "min" : ex.type === "bodyweight" ? "reps" : ""}
+                    </span>
+                  </button>
+                ))}
               </div>
+
+              {!pickerShowAll && pickerHiddenCount > 0 && (
+                <button
+                  onClick={() => setPickerExpanded(true)}
+                  className="text-xs text-muted-foreground underline"
+                >
+                  See all {pickerMatchingSearch.length} →
+                </button>
+              )}
+              {pickerExpanded && !pickerIsSearching && (
+                <button
+                  onClick={() => setPickerExpanded(false)}
+                  className="text-xs text-muted-foreground underline"
+                >
+                  Show featured only
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* How-to takeover: same panel whether triggered by previewing an
+              exercise straight from the picker (before selecting anything) or
+              the post-selection "How do I do this?" — replaces the whole
+              view either way, closed via X or the button below. Falls back
+              to the static image when an exercise has no gif yet. */}
+          {!completion && howToTarget && (howToTarget.gifUrl || howToTarget.imageUrls?.[0]) && (
+            <div className="flex flex-col gap-3">
+              <div className="border rounded-2xl overflow-hidden">
+                <img
+                  src={howToTarget.gifUrl ?? howToTarget.imageUrls?.[0]}
+                  alt={howToTarget.name}
+                  className="w-full bg-black"
+                />
+                {howToTarget.instructions && howToTarget.instructions.length > 0 && (
+                  <ol className="px-4 py-3 flex flex-col gap-1.5 list-decimal list-inside">
+                    {howToTarget.instructions.map((step, i) => (
+                      <li key={i} className="text-xs text-muted-foreground">{step}</li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+
+              {howToTarget.videoUrls?.[0] && getYouTubeEmbedUrl(howToTarget.videoUrls[0]) && (
+                <div className="rounded-2xl overflow-hidden aspect-video">
+                  <iframe
+                    src={getYouTubeEmbedUrl(howToTarget.videoUrls[0])!}
+                    title={`${howToTarget.name} video tutorial`}
+                    className="w-full h-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              )}
+
+              <button
+                onClick={closeHowTo}
+                className="text-sm text-center px-4 py-2 rounded-full border hover:bg-muted transition-colors"
+              >
+                Close
+              </button>
             </div>
           )}
 
           {/* Detail view */}
-          {!completion && !picking && selected && (
+          {!completion && !picking && selected && !howToTarget && (
             <div className="flex flex-col gap-3">
               <div>
                 <p className="text-sm font-semibold">{selected.name}</p>
@@ -323,6 +472,15 @@ export default function TodayPage() {
 
               {selected.loggedSummary && (
                 <p className="text-xs text-muted-foreground">Already logged: {selected.loggedSummary}</p>
+              )}
+
+              {(selected.gifUrl || selected.imageUrls?.[0]) && (
+                <button
+                  onClick={() => setShowHowTo(true)}
+                  className="text-xs font-medium text-muted-foreground underline text-left"
+                >
+                  How do I do this?
+                </button>
               )}
 
               <Input

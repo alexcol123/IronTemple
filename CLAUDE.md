@@ -171,6 +171,28 @@ The pitch requires Stripe recurring billing before you can demo it live:
 
 ## Feature Backlog
 
+### Move Exercise Images/GIFs from `public/` to Supabase Storage
+
+Exercise demo images/GIFs (from the bulk-imported `exercise-dataset`) are currently served straight out of the Next.js `public/` folder — an intentional MVP shortcut, not the long-term plan.
+
+**Why this is temporary:** bundling ~166MB of media into `public/` means it's committed to git and shipped with every Vercel deploy, regardless of how often any individual image is actually viewed (lazy-loading on click only saves bandwidth at runtime, not repo/build size — this was already known going in).
+
+**Why Supabase Storage specifically:** the app is already on Supabase for the database, and real object storage is needed anyway once influencers start uploading their own videos/messages/images for their own programs — this isn't a one-off migration, it's the same infrastructure the creator-upload feature will need.
+
+**What it needs:** move files from `public/exercises/` into a Supabase Storage bucket, update `ExerciseLibrary.gifUrl`/`imageUrls` to point at the new hosted URLs instead of local `/exercises/...` paths, then remove the files from `public/` and git.
+
+**Do NOT forget this** — flagged explicitly so the git bloat doesn't quietly become permanent.
+
+### Per-Creator Exercise Demo Overrides
+
+`ExerciseLibrary` (gif/instructions/video/images per exercise) is currently one shared row per exercise *name* — if two different creators both program "Bench Press," they see the exact same generic demo content, since it's not tied to who owns the plan.
+
+For a real influencer selling their own program, that's a real gap: part of what makes a $15/month program feel worth it over a free YouTube video is that it's personally coached — their own footage, their own form cues, their own face — not a generic anonymous demo. Filler/accessory exercises are fine staying generic; a creator's flagship lifts are where this would actually matter.
+
+**What it would need:** a way for a plan owner to override the shared default with their own gif/video/image for exercises *within their own plan specifically*, without changing what the generic/shared version shows everyone else. Likely a per-plan (or per-`PlannedExercise`) override table/fields that take priority over `ExerciseLibrary` when present, falling back to the shared default otherwise.
+
+**Do NOT build until:** there's a real creator actually building and selling their own program who wants this — right now it's hypothetical, and the override layer is a meaningful chunk of schema/UI work not worth doing speculatively.
+
 ### Real Videos for the How It Works Page
 
 `/how-it-works/{userId}` (linked from Menu) currently plays one placeholder clip (a public sample video) just to prove the layout works. Once real screen-capture videos are recorded, swap them in:

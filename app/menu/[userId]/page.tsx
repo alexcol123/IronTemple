@@ -10,6 +10,9 @@ const ITEMS = [
   { label: "Build Your Workout", desc: "Create your own custom split", path: "build" },
   { label: "Exercise Guide", desc: "How to do each move", path: "exercises" },
   { label: "Commands", desc: "Every text command the app understands", path: "commands" },
+  // Prototype-only shortcut — not user-scoped, just a straight link to the dev
+  // admin tools. Remove or move once this isn't needed in the main menu anymore.
+  { label: "Admin", desc: "Dev tools — exercise library, progression notes", path: "admin", static: true },
 ];
 
 export default function MenuPage() {
@@ -30,7 +33,7 @@ export default function MenuPage() {
           {ITEMS.map((item) => (
             <Link
               key={item.path}
-              href={`/${item.path}/${userId}`}
+              href={item.static ? `/${item.path}` : `/${item.path}/${userId}`}
               className="border rounded-2xl px-4 py-3 hover:bg-muted transition-colors"
             >
               <p className="text-sm font-medium">{item.label}</p>

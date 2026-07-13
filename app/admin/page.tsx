@@ -12,6 +12,11 @@ const TOPICS = [
     title: "Progression & Estimated Max",
     description: "How weight increases get suggested, the failure-set rule, and the PR math (Epley's formula).",
   },
+  {
+    href: "/admin/exercises",
+    title: "Exercise Library",
+    description: "See which exercises are missing a gif, instructions, video, or images, and fill them in.",
+  },
 ];
 
 export default function AdminIndexPage() {

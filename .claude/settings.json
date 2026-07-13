@@ -14,7 +14,10 @@
       "Bash(curl -s \"http://localhost:3000/api/user?phone=%2B15555550599\")",
       "Bash(curl -s \"http://localhost:3000/api/today/session?userId=f2d797fd-15ff-4510-ae8a-64a60b3c6b51\")",
       "Bash(npx tsc *)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "WebSearch",
+      "Bash(curl -s \"https://oss.exercisedb.dev/api/v1/exercises/bodyparts?bodyParts=chest&limit=500\")",
+      "Bash(curl -s -i \"https://oss.exercisedb.dev/api/v1/exercises/search?search=smith%20bench%20press\")"
     ]
   }
 }

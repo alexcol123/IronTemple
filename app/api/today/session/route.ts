@@ -39,7 +39,19 @@ export async function GET(req: NextRequest) {
       planHistory: {
         where: { endDate: null },
         include: {
-          plan: { include: { days: { include: { exercises: { where: { active: true }, orderBy: { order: "asc" } } } } } },
+          plan: {
+            include: {
+              days: {
+                include: {
+                  exercises: {
+                    where: { active: true },
+                    orderBy: { order: "asc" },
+                    include: { libraryExercise: true },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -88,6 +100,12 @@ export async function GET(req: NextRequest) {
 
   const exercises = await Promise.all(
     workoutDay.exercises.map(async (ex) => {
+      const howTo = {
+        gifUrl: ex.libraryExercise?.gifUrl ?? null,
+        instructions: ex.libraryExercise?.instructions ?? [],
+        videoUrls: ex.libraryExercise?.videoUrls ?? [],
+        imageUrls: ex.libraryExercise?.imageUrls ?? [],
+      };
       const log = existingSession?.exercises.find((l) => l.plannedExerciseId === ex.id);
       if (log) {
         const summary = log.skipped
@@ -106,6 +124,7 @@ export async function GET(req: NextRequest) {
           status: log.skipped ? "skipped" : "done",
           loggedSummary: summary,
           recommendation: null as string | null,
+          ...howTo,
         };
       }
       const recommendation = await recommendationFor(userId, ex.name, ex.type, ex.targetReps, goalKey);
@@ -118,29 +137,43 @@ export async function GET(req: NextRequest) {
         status: "pending",
         loggedSummary: null,
         recommendation,
+        ...howTo,
       };
     }),
   );
 
   // Ad-hoc (ADD) entries already logged this session via SMS — no button for
-  // this in the app yet, but they should still show up if they exist.
+  // this in the app yet, but they should still show up if they exist. Looked
+  // up by name against the library since these have no plannedExerciseId to
+  // join through.
   const adHocLogs = (existingSession?.exercises ?? []).filter((l) => l.plannedExerciseId === null);
-  const adHoc = adHocLogs.map((log) => ({
-    id: log.id,
-    name: log.customName ?? "Unknown",
-    type: log.type ?? "weighted",
-    targetSets: log.sets.length,
-    targetReps: 0,
-    status: log.skipped ? "skipped" : ("done" as const),
-    loggedSummary: log.skipped
-      ? null
-      : log.type === "cardio"
-        ? `${log.sets[0]?.reps ?? "?"} min`
-        : log.type === "bodyweight"
-          ? log.sets.map((s) => s.reps).join(" ")
-          : log.sets.map((s) => `${s.weight}x${s.reps}`).join(" "),
-    recommendation: null as string | null,
-  }));
+  const adHoc = await Promise.all(
+    adHocLogs.map(async (log) => {
+      const libraryExercise = log.customName
+        ? await prisma.exerciseLibrary.findUnique({ where: { name: log.customName } })
+        : null;
+      return {
+        id: log.id,
+        name: log.customName ?? "Unknown",
+        type: log.type ?? "weighted",
+        targetSets: log.sets.length,
+        targetReps: 0,
+        status: log.skipped ? "skipped" : ("done" as const),
+        loggedSummary: log.skipped
+          ? null
+          : log.type === "cardio"
+            ? `${log.sets[0]?.reps ?? "?"} min`
+            : log.type === "bodyweight"
+              ? log.sets.map((s) => s.reps).join(" ")
+              : log.sets.map((s) => `${s.weight}x${s.reps}`).join(" "),
+        recommendation: null as string | null,
+        gifUrl: libraryExercise?.gifUrl ?? null,
+        instructions: libraryExercise?.instructions ?? [],
+        videoUrls: libraryExercise?.videoUrls ?? [],
+        imageUrls: libraryExercise?.imageUrls ?? [],
+      };
+    }),
+  );
 
   return NextResponse.json({
     session: {

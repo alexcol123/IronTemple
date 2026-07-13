@@ -82,6 +82,48 @@ model PlannedExercise {
   // history reads don't, so past sessions still show exercises later removed.
   active       Boolean       @default(true)
   logs         ExerciseLog[]
+  // Optional — purely for pulling in gif/instructions/video content. Never
+  // required, so a one-off custom exercise with no library match just shows
+  // no enrichment instead of breaking anything.
+  libraryExercise   ExerciseLibrary? @relation(fields: [libraryExerciseId], references: [id])
+  libraryExerciseId String?
+}
+
+// The real, canonical source of "what exercises exist" — replaces the static
+// body-parts.ts picker file. One row per distinct real-world exercise, shared
+// across every plan/day that happens to use it, so enriching it once (a gif,
+// real instructions, tutorial videos) shows up everywhere that exercise is
+// used instead of needing to be re-entered per plan.
+model ExerciseLibrary {
+  id           String            @id @default(uuid())
+  name         String            @unique
+  bodyPart     String
+  type         ExerciseType      @default(weighted)
+  defaultSets  Int
+  defaultReps  Int
+  // All default to empty/null — content gets filled in over time via the
+  // admin page, never required up front.
+  gifUrl       String?
+  instructions String[]          @default([])
+  // Kept alongside English only — every other language in the bulk-imported
+  // dataset gets dropped at import time, not stored.
+  instructionsEs String[]        @default([])
+  // Multiple videos on purpose (e.g. a male-demo and female-demo variant) —
+  // no fixed meaning per index yet, just an ordered list of tutorial links.
+  videoUrls    String[]          @default([])
+  // Static reference photos, separate from gifUrl/videoUrls — same "just an
+  // array" treatment, e.g. index 0 male / index 1 female later if wanted.
+  imageUrls    String[]          @default([])
+  // The specific muscle (e.g. "quadriceps", "glutes") from the bulk import —
+  // used to decide bodyPart at import time, and kept for a possible future
+  // narrower filter within a body part. Not used for navigation today.
+  target       String?
+  // Hand-curated "genuinely common" flag — most exercises default to false
+  // since the bulk import added ~1,300 at once with no real usage data to
+  // sort by. The picker shows featured first, everything else behind "See all".
+  featured     Boolean           @default(false)
+  plannedExercises PlannedExercise[]
+  createdAt    DateTime          @default(now())
 }
 
 // ─── STEP 3: Connect users to plans and track their training ─────────────────

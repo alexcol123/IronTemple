@@ -24,27 +24,38 @@ export async function POST(req: NextRequest) {
   // One WorkoutPlan, created on the spot for this user — not seeded. The explicit
   // `goal` field means this plan's rep-range math works correctly regardless of
   // what name the creator gives it (see getUserGoalKey in lib/sms-engine.ts).
-  const plan = await prisma.workoutPlan.create({
-    data: {
-      name: planName.trim(),
-      goal,
-      createdByUserId: userId,
-      days: {
-        create: days.map((day, i) => ({
-          day: i + 1,
-          name: day.bodyParts.join(" + "),
-          muscles: day.bodyParts.join(", "),
-          exercises: {
-            create: day.exercises.map((ex, j) => ({
+  const dayData = await Promise.all(
+    days.map(async (day, i) => ({
+      day: i + 1,
+      name: day.bodyParts.join(" + "),
+      muscles: day.bodyParts.join(", "),
+      exercises: {
+        create: await Promise.all(
+          day.exercises.map(async (ex, j) => {
+            // Picked from the same library-backed picker, so this should
+            // always find a match — but connect only if it does, rather than
+            // risk the whole save failing over one missing library row.
+            const libraryMatch = await prisma.exerciseLibrary.findUnique({ where: { name: ex.name } });
+            return {
               name: ex.name,
               targetSets: ex.sets,
               targetReps: ex.reps,
               type: ex.type ?? "weighted",
               order: j + 1,
-            })),
-          },
-        })),
+              libraryExerciseId: libraryMatch?.id,
+            };
+          }),
+        ),
       },
+    })),
+  );
+
+  const plan = await prisma.workoutPlan.create({
+    data: {
+      name: planName.trim(),
+      goal,
+      createdByUserId: userId,
+      days: { create: dayData },
     },
   });
 

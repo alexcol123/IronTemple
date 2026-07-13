@@ -1,6 +1,4 @@
 import { prisma } from "@/lib/db";
-import { BODY_PARTS } from "@/lib/data/singleBodyPart/body-parts";
-import type { Exercise as LibraryExercise } from "@/lib/data/types";
 
 // Monday of the current real-world week, 00:00 — the anchor for "sessions this week"
 export function getMondayOfThisWeek(): Date {
@@ -219,16 +217,15 @@ type AdHocResolution =
 async function resolveAdHocExercise(userId: string, typedName: string): Promise<AdHocResolution> {
   const target = normalizeExerciseName(typedName);
 
-  const libraryMatch = BODY_PARTS.flatMap((bp) => bp.exercises as LibraryExercise[]).find(
-    (e) => normalizeExerciseName(e.name) === target,
-  );
+  const libraryExercises = await prisma.exerciseLibrary.findMany();
+  const libraryMatch = libraryExercises.find((e) => normalizeExerciseName(e.name) === target);
   if (libraryMatch) {
     return {
       needsInput: false,
       name: libraryMatch.name,
-      type: libraryMatch.type ?? "weighted",
-      targetSets: libraryMatch.sets,
-      targetReps: libraryMatch.reps,
+      type: libraryMatch.type,
+      targetSets: libraryMatch.defaultSets,
+      targetReps: libraryMatch.defaultReps,
     };
   }
 

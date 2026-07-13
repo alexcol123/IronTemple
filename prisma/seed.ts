@@ -52,26 +52,34 @@ async function seed() {
   ];
 
   for (const plan of plans) {
-    const created = await prisma.workoutPlan.create({
-      data: {
-        name: plan.name,
-        days: {
-          create: plan.days.map((day) => ({
-            day: day.day,
-            name: day.name,
-            muscles: day.muscles,
-            exercises: {
-              create: day.exercises.map((exercise, index) => ({
+    const days = await Promise.all(
+      plan.days.map(async (day) => ({
+        day: day.day,
+        name: day.name,
+        muscles: day.muscles,
+        exercises: {
+          create: await Promise.all(
+            day.exercises.map(async (exercise, index) => {
+              // Optional — connects to ExerciseLibrary only if a matching name
+              // exists there, so a plan exercise with no library entry yet
+              // still seeds fine, just without gif/instructions/video for now.
+              const libraryMatch = await prisma.exerciseLibrary.findUnique({ where: { name: exercise.name } });
+              return {
                 name: exercise.name,
                 targetSets: exercise.sets,
                 targetReps: exercise.reps,
                 type: exercise.type ?? "weighted",
                 order: index + 1,
-              })),
-            },
-          })),
+                libraryExerciseId: libraryMatch?.id,
+              };
+            }),
+          ),
         },
-      },
+      })),
+    );
+
+    const created = await prisma.workoutPlan.create({
+      data: { name: plan.name, days: { create: days } },
     });
 
     console.log(`Created plan: ${created.name} (${created.id})`);
