@@ -27,7 +27,7 @@ type LibraryBodyPart = { name: string; exercises: Exercise[] };
 // Turns a normal youtube.com/watch or youtu.be link into the /embed/ form
 // needed for an inline iframe — same helper as /today's how-to panel.
 function getYouTubeEmbedUrl(url: string): string | null {
-  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/);
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/);
   return match ? `https://www.youtube.com/embed/${match[1]}` : null;
 }
 

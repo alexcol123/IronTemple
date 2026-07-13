@@ -175,25 +175,6 @@ export async function getBestWeightPR(userId: string, exerciseName: string): Pro
 // building a workout-complete summary once every exercise is already logged).
 // Must exclude the session being summarized, or a set would always "PR"
 // against a history that already contains itself.
-export async function getBestWeightExcludingSession(
-  userId: string,
-  exerciseName: string,
-  excludeSessionId: string,
-): Promise<number | null> {
-  const best = await prisma.setLog.findFirst({
-    where: {
-      exerciseLog: {
-        skipped: false,
-        sessionId: { not: excludeSessionId },
-        session: { userId },
-        plannedExercise: { name: exerciseName },
-      },
-    },
-    orderBy: { weight: "desc" },
-  });
-  return best?.weight ?? null;
-}
-
 // Only catches safe variants (case, whitespace, plural "s"/"es") when matching
 // a freshly-typed ADD name — a real misspelling still starts fresh rather than
 // risk silently merging into the wrong exercise. "es" first, since words
@@ -561,7 +542,10 @@ export async function handleMessage(
       if (!user) return { reply: "Phone not found. Text JOIN to sign up.", nextState: "idle" };
 
       const currentPlan = user.planHistory[0]?.plan;
-      const allPlans = await prisma.workoutPlan.findMany();
+      const goalKey = await getUserGoalKey(user.id);
+      const allPlans = (await prisma.workoutPlan.findMany({ where: { name: { endsWith: goalKey } } })).sort(
+        (a, b) => EXPERIENCE_TIERS.findIndex((t) => a.name.startsWith(t.key)) - EXPERIENCE_TIERS.findIndex((t) => b.name.startsWith(t.key)),
+      );
       const list = allPlans.map((p, i) => `${i + 1}. ${p.name}${currentPlan?.id === p.id ? " (current)" : ""}`).join("\n");
 
       return {

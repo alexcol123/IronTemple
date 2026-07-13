@@ -107,7 +107,9 @@ export default function AdminExercisesPage() {
                 return (
                   <div key={ex.id} className="border border-border rounded-xl p-3">
                     <button
-                      onClick={() => (isEditing ? cancelEdit() : startEdit(ex))}
+                      onClick={() => {
+                        if (!isEditing) startEdit(ex);
+                      }}
                       className="w-full flex items-center justify-between text-left"
                     >
                       <div>
