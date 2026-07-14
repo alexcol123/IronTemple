@@ -23,7 +23,7 @@ export const BUILD_MUSCLE_ADVANCED_SPLIT: SplitDay[] = [
     muscles: "Back",
     exercises: [
       { name: "Weighted Pull-up", sets: 3, reps: 6 },
-      { name: "Barbell Pendlay Row", sets: 4, reps: 8 },
+      { name: "Barbell Bent Over Row", sets: 4, reps: 8 },
       { name: "Chin-up", sets: 3, reps: 8, type: "bodyweight" },
       { name: "Cable Seated Row", sets: 3, reps: 10 },
       { name: "Cable Underhand Pulldown", sets: 3, reps: 10 },

@@ -501,17 +501,30 @@ export default function BuildPage() {
                 )}
               </div>
 
-              {previewExercise.videoUrls?.[0] && getYouTubeEmbedUrl(previewExercise.videoUrls[0]) && (
-                <div className="rounded-2xl overflow-hidden aspect-video">
-                  <iframe
-                    src={getYouTubeEmbedUrl(previewExercise.videoUrls[0])!}
-                    title={`${previewExercise.name} video tutorial`}
-                    className="w-full h-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                </div>
-              )}
+              {previewExercise.videoUrls?.map((url, i) => {
+                const embedUrl = getYouTubeEmbedUrl(url);
+                return embedUrl ? (
+                  <div key={i} className="rounded-2xl overflow-hidden aspect-video">
+                    <iframe
+                      src={embedUrl}
+                      title={`${previewExercise.name} video tutorial ${i + 1}`}
+                      className="w-full h-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                ) : (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-center px-4 py-2 rounded-full border hover:bg-muted transition-colors"
+                  >
+                    Watch video {i + 1}
+                  </a>
+                );
+              })}
 
               <button
                 onClick={() => setPreviewExercise(null)}

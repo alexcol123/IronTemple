@@ -15,6 +15,7 @@ type LibraryExercise = {
   instructions: string[];
   videoUrls: string[];
   imageUrls: string[];
+  featured: boolean;
 };
 type LibraryBodyPart = { name: string; exercises: LibraryExercise[] };
 
@@ -34,13 +35,22 @@ function missingBadges(ex: LibraryExercise): string[] {
   return missing;
 }
 
+// Turns a normal youtube.com/watch, youtu.be, or youtube.com/shorts link into
+// the /embed/ form needed for an inline iframe preview.
+function getYouTubeEmbedUrl(url: string): string | null {
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/);
+  return match ? `https://www.youtube.com/embed/${match[1]}` : null;
+}
+
 export default function AdminExercisesPage() {
   const [bodyParts, setBodyParts] = useState<LibraryBodyPart[]>([]);
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [gifUrl, setGifUrl] = useState("");
   const [instructions, setInstructions] = useState("");
   const [videoUrls, setVideoUrls] = useState("");
   const [imageUrls, setImageUrls] = useState("");
+  const [featured, setFeatured] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
@@ -59,6 +69,7 @@ export default function AdminExercisesPage() {
     setInstructions(ex.instructions.join("\n"));
     setVideoUrls(ex.videoUrls.join("\n"));
     setImageUrls(ex.imageUrls.join("\n"));
+    setFeatured(ex.featured);
   }
 
   function cancelEdit() {
@@ -75,6 +86,7 @@ export default function AdminExercisesPage() {
         instructions: instructions.split("\n").map((s) => s.trim()).filter(Boolean),
         videoUrls: videoUrls.split("\n").map((s) => s.trim()).filter(Boolean),
         imageUrls: imageUrls.split("\n").map((s) => s.trim()).filter(Boolean),
+        featured,
       }),
     });
     setSaving(false);
@@ -104,33 +116,87 @@ export default function AdminExercisesPage() {
               {bp.exercises.map((ex) => {
                 const badges = missingBadges(ex);
                 const isEditing = editingId === ex.id;
+                const isPreviewing = previewId === ex.id;
                 return (
                   <div key={ex.id} className="border border-border rounded-xl p-3">
-                    <button
-                      onClick={() => {
-                        if (!isEditing) startEdit(ex);
-                      }}
-                      className="w-full flex items-center justify-between text-left"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{ex.name}</p>
-                        {badges.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {badges.map((b) => (
-                              <span
-                                key={b}
-                                className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400"
-                              >
-                                {b}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-emerald-600 dark:text-emerald-400">Complete</span>
+                    <div className="w-full flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setPreviewId(isPreviewing ? null : ex.id)}
+                        className="flex items-start gap-2 text-left flex-1 min-w-0"
+                      >
+                        <span className="text-xs text-muted-foreground mt-0.5 shrink-0">
+                          {isPreviewing ? "▼" : "▶"}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">
+                            {ex.featured && <span className="text-amber-500 mr-1">★</span>}
+                            {ex.name}
+                          </p>
+                          {badges.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {badges.map((b) => (
+                                <span
+                                  key={b}
+                                  className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400"
+                                >
+                                  {b}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-emerald-600 dark:text-emerald-400">Complete</span>
+                          )}
+                        </div>
+                      </button>
+                      {!isEditing && (
+                        <button
+                          onClick={() => startEdit(ex)}
+                          className="text-xs text-muted-foreground shrink-0"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+
+                    {isPreviewing && (ex.gifUrl || ex.videoUrls.length > 0) && (
+                      <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                        {ex.gifUrl && (
+                          <img src={ex.gifUrl} alt={ex.name} className="w-full rounded-lg bg-black" />
+                        )}
+                        {ex.videoUrls.map((url, i) => {
+                          const embedUrl = getYouTubeEmbedUrl(url);
+                          return embedUrl ? (
+                            <div key={i} className="rounded-lg overflow-hidden aspect-video">
+                              <iframe
+                                src={embedUrl}
+                                title={`${ex.name} video ${i + 1}`}
+                                className="w-full h-full"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            </div>
+                          ) : (
+                            <a
+                              key={i}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-center px-4 py-2 rounded-full border hover:bg-muted transition-colors"
+                            >
+                              Watch video {i + 1}
+                            </a>
+                          );
+                        })}
+                        {!isEditing && (
+                          <button
+                            onClick={() => startEdit(ex)}
+                            className="text-sm font-medium px-4 py-3 rounded-lg bg-black text-white hover:bg-neutral-800 transition-colors"
+                          >
+                            Edit
+                          </button>
                         )}
                       </div>
-                      <span className="text-xs text-muted-foreground">{isEditing ? "▲" : "Edit"}</span>
-                    </button>
+                    )}
 
                     {isEditing && (
                       <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
@@ -165,6 +231,14 @@ export default function AdminExercisesPage() {
                             className="w-full text-sm rounded-md border border-border bg-background px-3 py-2"
                           />
                         </div>
+                        <label className="flex items-center gap-2 text-sm text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={featured}
+                            onChange={(e) => setFeatured(e.target.checked)}
+                          />
+                          Featured
+                        </label>
                         <div className="flex gap-2">
                           <Button variant="outline" onClick={cancelEdit} className="flex-1 rounded-full">
                             Cancel

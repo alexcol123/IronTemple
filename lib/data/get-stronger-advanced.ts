@@ -25,7 +25,7 @@ export const GET_STRONGER_ADVANCED_SPLIT: SplitDay[] = [
     exercises: [
       { name: "Barbell Bench Press", sets: 5, reps: 5 },
       { name: "Barbell Incline Bench Press", sets: 3, reps: 8 },
-      { name: "Barbell Pendlay Row", sets: 3, reps: 6 },
+      { name: "Barbell Bent Over Row", sets: 3, reps: 6 },
       { name: "Barbell Curl", sets: 3, reps: 10 },
       { name: "Cable Pushdown", sets: 3, reps: 10 },
       { name: "Dumbbell Fly", sets: 3, reps: 10 },
