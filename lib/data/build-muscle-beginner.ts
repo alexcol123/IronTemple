@@ -24,7 +24,7 @@ export const BUILD_MUSCLE_BEGINNER_SPLIT: SplitDay[] = [
       { name: "Barbell Seated Overhead Press", sets: 3, reps: 8 },
       { name: "Dumbbell Lateral Raise", sets: 3, reps: 10 },
       { name: "Barbell Curl", sets: 3, reps: 10 },
-      { name: "Barbell Incline Close Grip Bench Press", sets: 3, reps: 8 },
+      { name: "Cable Pushdown", sets: 3, reps: 8 },
       { name: "Reverse Crunch", sets: 3, reps: 20, type: "bodyweight" },
     ],
   },

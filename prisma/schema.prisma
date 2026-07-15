@@ -97,6 +97,11 @@ model PlannedExercise {
 model ExerciseLibrary {
   id           String            @id @default(uuid())
   name         String            @unique
+  // Optional, blank by default. `name` stays the stable lookup key plan files
+  // and the seed script reference, so it should never change once other data
+  // references it — displayName exists so an exercise can show under the name
+  // people actually search for (e.g. "RDL") without breaking that link.
+  displayName  String?
   bodyPart     String
   type         ExerciseType      @default(weighted)
   defaultSets  Int

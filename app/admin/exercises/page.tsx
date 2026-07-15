@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 type LibraryExercise = {
   id: string;
   name: string;
+  displayName: string | null;
   sets: number;
   reps: number;
   type: string;
@@ -51,6 +52,7 @@ export default function AdminExercisesPage() {
   const [videoUrls, setVideoUrls] = useState("");
   const [imageUrls, setImageUrls] = useState("");
   const [featured, setFeatured] = useState(false);
+  const [displayName, setDisplayName] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
@@ -70,6 +72,7 @@ export default function AdminExercisesPage() {
     setVideoUrls(ex.videoUrls.join("\n"));
     setImageUrls(ex.imageUrls.join("\n"));
     setFeatured(ex.featured);
+    setDisplayName(ex.displayName ?? "");
   }
 
   function cancelEdit() {
@@ -87,6 +90,7 @@ export default function AdminExercisesPage() {
         videoUrls: videoUrls.split("\n").map((s) => s.trim()).filter(Boolean),
         imageUrls: imageUrls.split("\n").map((s) => s.trim()).filter(Boolean),
         featured,
+        displayName: displayName.trim() || null,
       }),
     });
     setSaving(false);
@@ -130,8 +134,11 @@ export default function AdminExercisesPage() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground">
                             {ex.featured && <span className="text-amber-500 mr-1">★</span>}
-                            {ex.name}
+                            {ex.displayName || ex.name}
                           </p>
+                          {ex.displayName && (
+                            <p className="text-xs text-muted-foreground/60">{ex.name}</p>
+                          )}
                           {badges.length > 0 ? (
                             <div className="flex flex-wrap gap-1 mt-1">
                               {badges.map((b) => (
@@ -229,6 +236,17 @@ export default function AdminExercisesPage() {
                             onChange={(e) => setImageUrls(e.target.value)}
                             rows={2}
                             className="w-full text-sm rounded-md border border-border bg-background px-3 py-2"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1">
+                            Display Name (optional — only if commonly called something else, e.g. &quot;RDL&quot;)
+                          </p>
+                          <Input
+                            value={displayName}
+                            onChange={(e) => setDisplayName(e.target.value)}
+                            placeholder={ex.name}
+                            className="text-sm"
                           />
                         </div>
                         <label className="flex items-center gap-2 text-sm text-foreground">

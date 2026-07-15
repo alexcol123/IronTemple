@@ -62,7 +62,7 @@ async function seed() {
               // still seeds fine, just without gif/instructions/video for now.
               const libraryMatch = await prisma.exerciseLibrary.findUnique({ where: { name: exercise.name } });
               return {
-                name: exercise.name,
+                name: libraryMatch?.displayName || exercise.name,
                 targetSets: exercise.sets,
                 targetReps: exercise.reps,
                 type: exercise.type ?? "weighted",

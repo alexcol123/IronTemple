@@ -12,7 +12,9 @@ type MyPlan = { id: string; name: string; goal: string | null; isActive: boolean
 // body-parts.ts Exercise type, which is now only used by the seeded goal plan
 // files (lose-weight.ts etc.), not the picker.
 type Exercise = {
+  id: string;
   name: string;
+  displayName?: string | null;
   sets: number;
   reps: number;
   type?: string;
@@ -72,6 +74,18 @@ export default function BuildPage() {
       .then((r) => r.json())
       .then((data) => setLibraryBodyParts(data.bodyParts ?? []));
   }, []);
+
+  // Non-featured exercises come back from the list endpoint without their
+  // gif/instructions/videos/images (kept out to keep that payload small) —
+  // fetch the real content here, only for the one exercise actually previewed.
+  async function previewExerciseContent(ex: Exercise) {
+    if (ex.featured) {
+      setPreviewExercise(ex);
+      return;
+    }
+    const full = await fetch(`/api/exercise-library/${ex.id}`).then((r) => r.json());
+    setPreviewExercise({ ...ex, ...full });
+  }
 
   function exercisesForBodyParts(bodyParts: string[]): Exercise[] {
     return libraryBodyParts.filter((bp) => bodyParts.includes(bp.name)).flatMap((bp) => bp.exercises);
@@ -302,7 +316,11 @@ export default function BuildPage() {
               const visibleExercises = exercisesForBodyParts(currentTab ? [currentTab] : []);
               const searchTerm = (search[dayIndex] ?? "").toLowerCase();
               const isSearching = searchTerm.length > 0;
-              const matchingSearch = visibleExercises.filter((ex) => ex.name.toLowerCase().includes(searchTerm));
+              const matchingSearch = visibleExercises.filter(
+                (ex) =>
+                  ex.name.toLowerCase().includes(searchTerm) ||
+                  (ex.displayName ?? "").toLowerCase().includes(searchTerm),
+              );
               const showAll = expanded[dayIndex] || isSearching;
               const displayedExercises = showAll ? matchingSearch : matchingSearch.filter((ex) => ex.featured);
               const hiddenCount = matchingSearch.length - displayedExercises.length;
@@ -381,7 +399,7 @@ export default function BuildPage() {
                                       {day.selectedExercises.indexOf(ex.name) + 1}.
                                     </span>
                                   )}
-                                  {ex.name}
+                                  {ex.displayName || ex.name}
                                 </label>
                                 {checked && (
                                   <div className="flex items-center gap-1">
@@ -414,10 +432,10 @@ export default function BuildPage() {
                                   </div>
                                 )}
                               </div>
-                              {checked && (ex.gifUrl || ex.imageUrls?.[0]) && (
+                              {checked && (
                                 <button
                                   type="button"
-                                  onClick={() => setPreviewExercise(ex)}
+                                  onClick={() => previewExerciseContent(ex)}
                                   className="text-xs font-medium text-muted-foreground underline text-left pl-6"
                                 >
                                   How do I do this?
@@ -489,7 +507,7 @@ export default function BuildPage() {
               <div className="border rounded-2xl overflow-hidden">
                 <img
                   src={previewExercise.gifUrl ?? previewExercise.imageUrls?.[0]}
-                  alt={previewExercise.name}
+                  alt={previewExercise.displayName || previewExercise.name}
                   className="w-full bg-black"
                 />
                 {previewExercise.instructions && previewExercise.instructions.length > 0 && (
@@ -507,7 +525,7 @@ export default function BuildPage() {
                   <div key={i} className="rounded-2xl overflow-hidden aspect-video">
                     <iframe
                       src={embedUrl}
-                      title={`${previewExercise.name} video tutorial ${i + 1}`}
+                      title={`${previewExercise.displayName || previewExercise.name} video tutorial ${i + 1}`}
                       className="w-full h-full"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen

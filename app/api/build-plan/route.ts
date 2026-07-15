@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
             // risk the whole save failing over one missing library row.
             const libraryMatch = await prisma.exerciseLibrary.findUnique({ where: { name: ex.name } });
             return {
-              name: ex.name,
+              name: libraryMatch?.displayName || ex.name,
               targetSets: ex.sets,
               targetReps: ex.reps,
               type: ex.type ?? "weighted",

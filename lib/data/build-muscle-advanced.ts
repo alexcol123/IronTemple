@@ -13,7 +13,7 @@ export const BUILD_MUSCLE_ADVANCED_SPLIT: SplitDay[] = [
       { name: "Dumbbell Decline Bench Press", sets: 3, reps: 8 },
       { name: "Dumbbell Fly", sets: 3, reps: 10 },
       { name: "Dumbbell Pullover", sets: 3, reps: 10 },
-      { name: "Barbell Incline Close Grip Bench Press", sets: 3, reps: 8 },
+      { name: "Cable Pushdown", sets: 3, reps: 8 },
       { name: "Weighted Crunch", sets: 3, reps: 15 },
     ],
   },
@@ -49,7 +49,7 @@ export const BUILD_MUSCLE_ADVANCED_SPLIT: SplitDay[] = [
     name: "Arms",
     muscles: "Biceps, Triceps",
     exercises: [
-      { name: "Barbell Incline Close Grip Bench Press", sets: 3, reps: 8 },
+      { name: "Barbell Lying Triceps Extension Skull Crusher", sets: 3, reps: 8 },
       { name: "Barbell Curl", sets: 3, reps: 10 },
       { name: "Dumbbell Seated Hammer Curl", sets: 3, reps: 10 },
       { name: "Ez Barbell Close Grip Preacher Curl", sets: 3, reps: 10 },

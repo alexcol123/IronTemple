@@ -68,7 +68,7 @@ export const GET_STRONGER_ADVANCED_SPLIT: SplitDay[] = [
       { name: "Barbell Glute Bridge", sets: 3, reps: 10 },
       { name: "Dumbbell Lunge", sets: 3, reps: 10 },
       { name: "Dumbbell Seated Hammer Curl", sets: 3, reps: 10 },
-      { name: "Barbell Incline Close Grip Bench Press", sets: 3, reps: 8 },
+      { name: "Cable Pushdown", sets: 3, reps: 8 },
       { name: "Barbell Wrist Curl", sets: 3, reps: 12 },
       { name: "Weighted Crunch", sets: 3, reps: 15 },
     ],

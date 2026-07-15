@@ -31,7 +31,9 @@ type Session =
 // The real exercise picker library, fetched from the database instead of the
 // old static body-parts.ts file.
 type LibraryExercise = {
+  id: string;
   name: string;
+  displayName?: string | null;
   sets: number;
   reps: number;
   type?: string;
@@ -150,19 +152,23 @@ export default function TodayPage() {
     setPickerExpanded(false);
   }
 
-  function pickAdHocExercise(ex: LibraryExercise) {
+  // Non-featured exercises come back from the list endpoint without their
+  // gif/instructions/videos/images (kept out to keep that payload small) —
+  // fetch the real content here, only for the one exercise actually picked.
+  async function pickAdHocExercise(ex: LibraryExercise) {
     setPicking(false);
     setPickerSearch("");
     setPickerExpanded(false);
+    const full = ex.featured ? ex : await fetch(`/api/exercise-library/${ex.id}`).then((r) => r.json());
     setAdHocPick({
-      name: ex.name,
+      name: ex.displayName || ex.name,
       type: ex.type ?? "weighted",
       targetSets: ex.sets,
       targetReps: ex.reps,
-      gifUrl: ex.gifUrl,
-      instructions: ex.instructions,
-      videoUrls: ex.videoUrls,
-      imageUrls: ex.imageUrls,
+      gifUrl: full.gifUrl,
+      instructions: full.instructions,
+      videoUrls: full.videoUrls,
+      imageUrls: full.imageUrls,
     });
     setInput("");
     setError("");
@@ -224,8 +230,10 @@ export default function TodayPage() {
 
   const pickerSearchTerm = pickerSearch.toLowerCase();
   const pickerIsSearching = pickerSearchTerm.length > 0;
-  const pickerMatchingSearch = (libraryBodyParts.find((bp) => bp.name === pickerBodyPart)?.exercises ?? []).filter((ex) =>
-    ex.name.toLowerCase().includes(pickerSearchTerm),
+  const pickerMatchingSearch = (libraryBodyParts.find((bp) => bp.name === pickerBodyPart)?.exercises ?? []).filter(
+    (ex) =>
+      ex.name.toLowerCase().includes(pickerSearchTerm) ||
+      (ex.displayName ?? "").toLowerCase().includes(pickerSearchTerm),
   );
   const pickerShowAll = pickerExpanded || pickerIsSearching;
   const pickerDisplayed = pickerShowAll ? pickerMatchingSearch : pickerMatchingSearch.filter((ex) => ex.featured);
@@ -390,7 +398,7 @@ export default function TodayPage() {
                     onClick={() => pickAdHocExercise(ex)}
                     className="border rounded-2xl px-4 py-3 flex items-center justify-between text-left hover:bg-muted transition-colors"
                   >
-                    <p className="text-sm font-medium">{ex.name}</p>
+                    <p className="text-sm font-medium">{ex.displayName || ex.name}</p>
                     <span className="text-xs text-muted-foreground">
                       {ex.sets} x {ex.reps} {ex.type === "cardio" ? "min" : ex.type === "bodyweight" ? "reps" : ""}
                     </span>
