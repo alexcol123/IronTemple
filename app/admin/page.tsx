@@ -17,6 +17,22 @@ const TOPICS = [
     title: "Exercise Library",
     description: "See which exercises are missing a gif, instructions, video, or images, and fill them in.",
   },
+  {
+    href: "/admin/workout-plans",
+    title: "The 12 Workout Plans",
+    description: "Beginner/Intermediate/Advanced for each goal — review what onboarding actually assigns.",
+  },
+  {
+    // John Doe (Test), phone +15555559100 — 5 weeks of detailed backdated history
+    // plus 22 months of sparser long-tail history (1 session/month) on
+    // Advanced Get Stronger, for testing both the weekly and all-time monthly
+    // charts. Re-seeding with `npx tsx prisma/seed-test-progression.ts`
+    // deletes and recreates this user, which changes the ID — update this
+    // href to match whatever ID the script prints when that happens.
+    href: "/menu/27792e38-b047-4dff-afa3-6856121f987c",
+    title: "Test User",
+    description: "John Doe (Test) — 5 weeks detailed + 22 months long-tail history, for checking Weekly Progress/History/PRs/charts against known data.",
+  },
 ];
 
 export default function AdminIndexPage() {

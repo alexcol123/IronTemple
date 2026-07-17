@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ReadNav } from "@/components/read-nav";
 
-type SetLog = { setNumber: number; weight: number; reps: number };
+type SetLog = { id: string; setNumber: number; weight: number; reps: number };
 type ExerciseLog = {
   id: string;
   skipped: boolean;
@@ -43,14 +43,47 @@ export default function HistoryByIdPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week, etc.
   const [todaySession, setTodaySession] = useState<TodaySession | null | undefined>(undefined);
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+  const [draftSets, setDraftSets] = useState<Record<string, { weight: string; reps: string }>>({});
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  function loadSessions() {
     if (!userId) { setLoading(false); return; }
     fetch(`/api/sessions?userId=${encodeURIComponent(userId)}`)
       .then((r) => r.json())
       .then((data) => setSessions(data.sessions ?? []))
       .finally(() => setLoading(false));
-  }, [userId]);
+  }
+
+  useEffect(loadSessions, [userId]);
+
+  function startEditing(ex: ExerciseLog) {
+    setEditingExerciseId(ex.id);
+    const drafts: Record<string, { weight: string; reps: string }> = {};
+    for (const s of ex.sets) drafts[s.id] = { weight: String(s.weight), reps: String(s.reps) };
+    setDraftSets(drafts);
+  }
+
+  async function saveEditing(ex: ExerciseLog) {
+    setSaving(true);
+    await Promise.all(
+      ex.sets.map((s) => {
+        const draft = draftSets[s.id];
+        if (!draft) return null;
+        const weight = Number(draft.weight);
+        const reps = Number(draft.reps);
+        if (weight === s.weight && reps === s.reps) return null;
+        return fetch(`/api/sets/${s.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ weight, reps, userId }),
+        });
+      }),
+    );
+    setSaving(false);
+    setEditingExerciseId(null);
+    loadSessions();
+  }
 
   useEffect(() => {
     if (!userId) return;
@@ -94,26 +127,26 @@ export default function HistoryByIdPage() {
 
   if (loading)
     return (
-      <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">
+      <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">
         Loading...
       </div>
     );
 
   return (
-    <div className="flex items-center justify-center h-screen bg-background overflow-hidden">
-      <div className="flex flex-col w-full max-w-sm h-full sm:h-175 sm:border sm:rounded-3xl overflow-hidden sm:shadow-md">
-        {/* Header */}
-        <div className="px-4 py-3 border-b flex items-center justify-center">
-          <p className="font-semibold text-sm">Workout History</p>
+    <div className="min-h-screen bg-background">
+      <ReadNav userId={userId} />
+      <div className="max-w-lg mx-auto p-6 pb-16">
+        {/* Nameplate */}
+        <div className="flex items-baseline justify-between pb-4 mb-6 border-b-2 border-border">
+          <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Iron Temple</p>
+          <p className="text-xs text-muted-foreground">History</p>
         </div>
-
-        <ReadNav userId={userId} />
 
         {/* Today's workout CTA */}
         {todaySession && !todaySession.allDone && (
           <Link
             href={`/today/${userId}`}
-            className="mx-4 mt-3 rounded-2xl border px-4 py-3 flex items-center justify-between hover:bg-muted transition-colors"
+            className="mb-6 rounded-xl border border-border px-4 py-3 flex items-center justify-between hover:bg-muted transition-colors"
           >
             <div>
               <p className="text-sm font-semibold">{doneCount === 0 ? "Start Workout" : "Continue Workout"}</p>
@@ -122,38 +155,43 @@ export default function HistoryByIdPage() {
                 {doneCount > 0 && ` · ${doneCount} of ${totalCount} done`}
               </p>
             </div>
-            <span className="text-muted-foreground">→</span>
+            <span className="text-amber-500">→</span>
           </Link>
         )}
         {todaySession && todaySession.allDone && (
-          <div className="mx-4 mt-3 rounded-2xl border px-4 py-3 text-center">
-            <p className="text-xs text-muted-foreground">
-              All {todaySession.totalDays} sessions complete this week — nice work!
-            </p>
-          </div>
+          <Link
+            href={`/today/${userId}`}
+            className="mb-6 rounded-xl border border-border px-4 py-3 flex items-center justify-between hover:bg-muted transition-colors"
+          >
+            <div>
+              <p className="text-sm font-semibold">All {todaySession.totalDays} sessions complete this week</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Nice work! Want to add a bonus session?</p>
+            </div>
+            <span className="text-amber-500">→</span>
+          </Link>
         )}
 
         {/* Week navigation */}
-        <div className="px-4 py-2 border-b flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <button
             onClick={() => navigate(-1)}
             disabled={!hasPrev}
-            className="text-xs px-3 py-1 rounded-md border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-muted transition-colors"
+            className="text-xs px-3 py-1 rounded-md border border-border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-muted transition-colors"
           >
             ← Back
           </button>
-          <p className="text-xs font-medium">{weekLabel}</p>
+          <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">{weekLabel}</p>
           <button
             onClick={() => navigate(1)}
             disabled={!hasNext}
-            className="text-xs px-3 py-1 rounded-md border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-muted transition-colors"
+            className="text-xs px-3 py-1 rounded-md border border-border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-muted transition-colors"
           >
             Next →
           </button>
         </div>
 
         {/* Session list */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
+        <div className="flex flex-col gap-3">
           {weekSessions.length === 0 && (
             <p className="text-sm text-muted-foreground text-center mt-8">
               No workouts this week.
@@ -170,7 +208,7 @@ export default function HistoryByIdPage() {
             });
 
             return (
-              <div key={session.id} className="border rounded-2xl overflow-hidden">
+              <div key={session.id} className="border border-border rounded-xl overflow-hidden">
                 <button
                   onClick={() => setExpanded(isOpen ? null : session.id)}
                   className="w-full px-4 py-3 flex items-center justify-between text-left"
@@ -193,24 +231,87 @@ export default function HistoryByIdPage() {
                 </button>
 
                 {isOpen && (
-                  <div className="border-t px-4 py-3 flex flex-col gap-3">
-                    {session.exercises.map((ex) => (
-                      <div key={ex.id}>
-                        <p className="text-xs font-semibold">
-                          {ex.plannedExercise?.name ?? ex.customName}
-                          {ex.skipped && (
-                            <span className="ml-2 text-muted-foreground font-normal">
-                              skipped
-                            </span>
+                  <div className="border-t border-border px-4 py-3 flex flex-col gap-3">
+                    {session.exercises.map((ex) => {
+                      const isEditing = editingExerciseId === ex.id;
+                      return (
+                        <div key={ex.id}>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold">
+                              {ex.plannedExercise?.name ?? ex.customName}
+                              {ex.skipped && (
+                                <span className="ml-2 text-muted-foreground font-normal">
+                                  skipped
+                                </span>
+                              )}
+                            </p>
+                            {!ex.skipped && ex.sets.length > 0 && !isEditing && (
+                              <button
+                                onClick={() => startEditing(ex)}
+                                className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                              >
+                                Edit
+                              </button>
+                            )}
+                          </div>
+
+                          {!ex.skipped && ex.sets.length > 0 && !isEditing && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {ex.sets.map((s) => `${s.weight}x${s.reps}`).join("  ")}
+                            </p>
                           )}
-                        </p>
-                        {!ex.skipped && ex.sets.length > 0 && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {ex.sets.map((s) => `${s.weight}x${s.reps}`).join("  ")}
-                          </p>
-                        )}
-                      </div>
-                    ))}
+
+                          {isEditing && (
+                            <div className="mt-1.5 flex flex-col gap-1.5">
+                              {ex.sets.map((s) => (
+                                <div key={s.id} className="flex items-center gap-1.5">
+                                  <input
+                                    type="number"
+                                    value={draftSets[s.id]?.weight ?? ""}
+                                    onChange={(e) =>
+                                      setDraftSets((prev) => ({
+                                        ...prev,
+                                        [s.id]: { ...prev[s.id], weight: e.target.value },
+                                      }))
+                                    }
+                                    className="w-16 text-xs border border-border rounded px-1.5 py-0.5 bg-background"
+                                  />
+                                  <span className="text-xs text-muted-foreground">lbs x</span>
+                                  <input
+                                    type="number"
+                                    value={draftSets[s.id]?.reps ?? ""}
+                                    onChange={(e) =>
+                                      setDraftSets((prev) => ({
+                                        ...prev,
+                                        [s.id]: { ...prev[s.id], reps: e.target.value },
+                                      }))
+                                    }
+                                    className="w-14 text-xs border border-border rounded px-1.5 py-0.5 bg-background"
+                                  />
+                                  <span className="text-xs text-muted-foreground">reps</span>
+                                </div>
+                              ))}
+                              <div className="flex gap-2 mt-0.5">
+                                <button
+                                  onClick={() => saveEditing(ex)}
+                                  disabled={saving}
+                                  className="text-[10px] font-medium px-2 py-1 rounded bg-amber-500 text-white disabled:opacity-50"
+                                >
+                                  {saving ? "Saving..." : "Save"}
+                                </button>
+                                <button
+                                  onClick={() => setEditingExerciseId(null)}
+                                  disabled={saving}
+                                  className="text-[10px] px-2 py-1 rounded border border-border disabled:opacity-50"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

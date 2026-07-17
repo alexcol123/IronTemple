@@ -9,10 +9,10 @@ export const LOSE_WEIGHT_ADVANCED_SPLIT: SplitDay[] = [
     name: "Full Body A",
     muscles: "Full Body",
     exercises: [
-      { name: "Dumbbell Goblet Squat", sets: 3, reps: 15 },
+      { name: "Barbell Sumo Deadlift", sets: 3, reps: 10 },
       { name: "Push-up", sets: 3, reps: 15, type: "bodyweight" },
       { name: "Cable Seated Row", sets: 3, reps: 15 },
-      { name: "Dumbbell Romanian Deadlift", sets: 3, reps: 12 },
+      { name: "Sled 45 leg press", sets: 3, reps: 12 },
       { name: "Dead Bug", sets: 3, reps: 20, type: "bodyweight" },
       { name: "Burpee", sets: 1, reps: 5, type: "cardio" },
     ],
@@ -48,12 +48,12 @@ export const LOSE_WEIGHT_ADVANCED_SPLIT: SplitDay[] = [
     name: "Full Body D",
     muscles: "Full Body",
     exercises: [
-      { name: "Barbell Full Squat", sets: 3, reps: 12 },
+      { name: "Squat", sets: 3, reps: 12 },
       { name: "Dumbbell Incline Fly", sets: 3, reps: 12 },
       { name: "Cable Seated Wide-grip Row", sets: 3, reps: 12 },
       { name: "Dumbbell Lateral Raise", sets: 3, reps: 12 },
       { name: "Air Bike", sets: 3, reps: 20, type: "bodyweight" },
-      { name: "Bear Crawl", sets: 1, reps: 3, type: "cardio" },
+      { name: "Rowing Machine", sets: 1, reps: 3, type: "cardio" },
     ],
   },
   {
@@ -61,7 +61,7 @@ export const LOSE_WEIGHT_ADVANCED_SPLIT: SplitDay[] = [
     name: "Full Body E",
     muscles: "Full Body",
     exercises: [
-      { name: "Barbell Sumo Deadlift", sets: 3, reps: 10 },
+      { name: "Dumbbell Goblet Squat", sets: 3, reps: 15 },
       { name: "Dumbbell Decline Bench Press", sets: 3, reps: 12 },
       { name: "Barbell One Arm Bent Over Row", sets: 3, reps: 12 },
       { name: "Dumbbell Arnold Press", sets: 3, reps: 12 },

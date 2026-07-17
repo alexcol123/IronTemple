@@ -8,7 +8,7 @@ export const BUILD_MUSCLE_INTERMEDIATE_SPLIT: SplitDay[] = [
     name: "Chest",
     muscles: "Chest",
     exercises: [
-      { name: "Barbell Bench Press", sets: 3, reps: 6 },
+      { name: "Bench Press", sets: 3, reps: 6 },
       { name: "Barbell Incline Bench Press", sets: 3, reps: 8 },
       { name: "Dumbbell Pullover", sets: 3, reps: 10 },
       { name: "Dumbbell Fly", sets: 3, reps: 10 },
@@ -25,7 +25,7 @@ export const BUILD_MUSCLE_INTERMEDIATE_SPLIT: SplitDay[] = [
       { name: "Barbell Bent Over Row", sets: 3, reps: 8 },
       { name: "Cable Seated Row", sets: 3, reps: 10 },
       { name: "Cable Underhand Pulldown", sets: 3, reps: 10 },
-      { name: "Barbell Curl", sets: 3, reps: 10 },
+      { name: "Barbell Pullover", sets: 3, reps: 10 },
       { name: "Reverse Crunch", sets: 3, reps: 20, type: "bodyweight" },
     ],
   },
@@ -47,7 +47,7 @@ export const BUILD_MUSCLE_INTERMEDIATE_SPLIT: SplitDay[] = [
     name: "Legs",
     muscles: "Quads, Hamstrings, Calves",
     exercises: [
-      { name: "Barbell Full Squat", sets: 3, reps: 6 },
+      { name: "Squat", sets: 3, reps: 6 },
       { name: "Barbell Straight Leg Deadlift", sets: 3, reps: 8 },
       { name: "Dumbbell Lunge", sets: 3, reps: 10 },
       { name: "Lever Lying Leg Curl", sets: 3, reps: 10 },

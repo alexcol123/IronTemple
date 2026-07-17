@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/app/generated/prisma/client";
 import {
   getMondayOfThisWeek,
   getUserGoalKey,
@@ -31,6 +32,7 @@ async function recommendationFor(
 
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get("userId");
+  const bonusSessionId = req.nextUrl.searchParams.get("sessionId");
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
 
   const user = await prisma.user.findUnique({
@@ -61,39 +63,71 @@ export async function GET(req: NextRequest) {
   const activePlan = user.planHistory[0];
   if (!activePlan) return NextResponse.json({ session: null });
 
-  const monday = getMondayOfThisWeek();
-  const sessionsThisWeek = await prisma.workoutSession.count({ where: { userId, date: { gte: monday } } });
-
-  // Prefer resuming the most recent session if it's still incomplete, rather
-  // than always deriving "next day" from the session count. Since the app is
-  // non-linear (log one exercise, come back to the list, log another), the
-  // very first log of a day would otherwise already count toward this week's
-  // total on the next page load — silently flipping the list to a different
-  // day and orphaning the rest of the one actually in progress.
-  const dayIds = activePlan.plan.days.map((d) => d.id);
-  const latestSession = await prisma.workoutSession.findFirst({
-    where: { userId, workoutDayId: { in: dayIds } },
-    orderBy: { date: "desc" },
-    include: { exercises: { include: { sets: { orderBy: { setNumber: "asc" } } } } },
-  });
-
-  let workoutDay = activePlan.plan.days.find((d) => d.id === latestSession?.workoutDayId);
-  const isLatestIncomplete = workoutDay && latestSession
-    ? latestSession.exercises.filter((e) => e.plannedExerciseId !== null).length < workoutDay.exercises.length
-    : false;
-
-  let existingSession = isLatestIncomplete ? latestSession : null;
+  // Bonus mode — an explicit session (created via POST /api/today/bonus) was
+  // asked for directly, bypassing the "next day"/"latest incomplete" logic
+  // below entirely. This is how a second session on a day already completed
+  // this week gets loaded, instead of being silently mistaken for a resume.
+  type SessionWithExercises = Prisma.WorkoutSessionGetPayload<{
+    include: { exercises: { include: { sets: true } } };
+  }>;
+  let workoutDay: (typeof activePlan.plan.days)[number] | undefined;
+  let existingSession: SessionWithExercises | null = null;
   let nextDayNumber: number;
-  if (isLatestIncomplete && workoutDay) {
+  let isBonus = false;
+
+  if (bonusSessionId) {
+    const bonusSession = await prisma.workoutSession.findUnique({
+      where: { id: bonusSessionId },
+      include: { exercises: { include: { sets: { orderBy: { setNumber: "asc" } } } } },
+    });
+    if (!bonusSession || bonusSession.userId !== userId) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+    workoutDay = activePlan.plan.days.find((d) => d.id === bonusSession.workoutDayId);
+    if (!workoutDay) return NextResponse.json({ error: "Workout day not found" }, { status: 404 });
+    existingSession = bonusSession;
     nextDayNumber = workoutDay.day;
+    isBonus = true;
   } else {
-    nextDayNumber = sessionsThisWeek + 1;
-    workoutDay = activePlan.plan.days.find((d) => d.day === nextDayNumber);
-    existingSession = null;
+    const monday = getMondayOfThisWeek();
+    const sessionsThisWeek = await prisma.workoutSession.count({ where: { userId, date: { gte: monday } } });
+
+    // Prefer resuming the most recent session if it's still incomplete, rather
+    // than always deriving "next day" from the session count. Since the app is
+    // non-linear (log one exercise, come back to the list, log another), the
+    // very first log of a day would otherwise already count toward this week's
+    // total on the next page load — silently flipping the list to a different
+    // day and orphaning the rest of the one actually in progress.
+    const dayIds = activePlan.plan.days.map((d) => d.id);
+    const latestSession = await prisma.workoutSession.findFirst({
+      where: { userId, workoutDayId: { in: dayIds } },
+      orderBy: { date: "desc" },
+      include: { exercises: { include: { sets: { orderBy: { setNumber: "asc" } } } } },
+    });
+
+    workoutDay = activePlan.plan.days.find((d) => d.id === latestSession?.workoutDayId);
+    const isLatestIncomplete = workoutDay && latestSession
+      ? latestSession.exercises.filter((e) => e.plannedExerciseId !== null).length < workoutDay.exercises.length
+      : false;
+
+    existingSession = isLatestIncomplete ? latestSession : null;
+    if (isLatestIncomplete && workoutDay) {
+      nextDayNumber = workoutDay.day;
+    } else {
+      nextDayNumber = sessionsThisWeek + 1;
+      workoutDay = activePlan.plan.days.find((d) => d.day === nextDayNumber);
+      existingSession = null;
+    }
   }
 
   if (!workoutDay) {
-    return NextResponse.json({ session: { allDone: true, totalDays: activePlan.plan.days.length } });
+    const distinctDays = new Map<string, { workoutDayId: string; name: string }>();
+    for (const d of activePlan.plan.days) {
+      if (!distinctDays.has(d.name)) distinctDays.set(d.name, { workoutDayId: d.id, name: d.name });
+    }
+    return NextResponse.json({
+      session: { allDone: true, totalDays: activePlan.plan.days.length, bonusOptions: [...distinctDays.values()] },
+    });
   }
 
   const goalKey = await getUserGoalKey(userId);
@@ -178,6 +212,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     session: {
       allDone: false,
+      sessionId: existingSession?.id ?? null,
+      isBonus,
       workoutDayId: workoutDay.id,
       dayName: workoutDay.name,
       nextDayNumber,

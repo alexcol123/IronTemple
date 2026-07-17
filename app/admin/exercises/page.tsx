@@ -55,8 +55,25 @@ export default function AdminExercisesPage() {
   const [displayName, setDisplayName] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newBodyPart, setNewBodyPart] = useState("");
+  const [newType, setNewType] = useState("weighted");
+  const [newSets, setNewSets] = useState("3");
+  const [newReps, setNewReps] = useState("10");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
   const load = useCallback(() => {
-    fetch("/api/exercise-library")
+    // ?full=true — this dashboard's whole job is reviewing content gaps on
+    // non-featured exercises, so it needs their real gif/instructions/videos,
+    // not the stripped payload the athlete-facing pickers use.
+    fetch("/api/exercise-library?full=true")
       .then((r) => r.json())
       .then((data) => setBodyParts(data.bodyParts ?? []));
   }, []);
@@ -98,6 +115,77 @@ export default function AdminExercisesPage() {
     load();
   }
 
+  async function createExercise() {
+    setCreateError("");
+    if (!newName.trim() || !newBodyPart) {
+      setCreateError("Name and body part are required.");
+      return;
+    }
+    setCreating(true);
+    const res = await fetch("/api/admin/exercise-library", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: newName.trim(),
+        bodyPart: newBodyPart,
+        type: newType,
+        defaultSets: parseInt(newSets) || 3,
+        defaultReps: parseInt(newReps) || 10,
+      }),
+    });
+    setCreating(false);
+    if (!res.ok) {
+      const data = await res.json();
+      setCreateError(data.error ?? "Something went wrong.");
+      return;
+    }
+    const { exercise } = await res.json();
+    setNewName("");
+    setNewBodyPart("");
+    setNewType("weighted");
+    setNewSets("3");
+    setNewReps("10");
+    setShowAddForm(false);
+    load();
+    setEditingId(exercise.id);
+    setGifUrl("");
+    setInstructions("");
+    setVideoUrls("");
+    setImageUrls("");
+    setFeatured(false);
+    setDisplayName("");
+  }
+
+  function startDelete(id: string) {
+    setDeletingId(id);
+    setDeleteConfirmText("");
+    setDeleteError("");
+  }
+
+  function cancelDelete() {
+    setDeletingId(null);
+    setDeleteConfirmText("");
+    setDeleteError("");
+  }
+
+  async function confirmDelete(id: string) {
+    if (deleteConfirmText.trim().toLowerCase() !== "yes") return;
+    setDeleting(true);
+    setDeleteError("");
+    const res = await fetch(`/api/admin/exercise-library/${id}`, { method: "DELETE" });
+    setDeleting(false);
+    if (!res.ok) {
+      const data = await res.json();
+      setDeleteError(data.error ?? "Something went wrong.");
+      return;
+    }
+    setDeletingId(null);
+    setDeleteConfirmText("");
+    if (editingId === id) setEditingId(null);
+    if (previewId === id) setPreviewId(null);
+    load();
+  }
+
   const totalExercises = bodyParts.reduce((sum, bp) => sum + bp.exercises.length, 0);
   const totalMissing = bodyParts.reduce(
     (sum, bp) => sum + bp.exercises.filter((ex) => missingBadges(ex).length > 0).length,
@@ -108,9 +196,65 @@ export default function AdminExercisesPage() {
     <div className="min-h-screen bg-background p-6 max-w-2xl mx-auto">
       <Link href="/admin" className="text-xs text-muted-foreground">← Dev Reference</Link>
       <h1 className="text-2xl font-bold text-foreground mt-2">Exercise Library</h1>
-      <p className="text-sm text-muted-foreground mt-1 mb-6">
+      <p className="text-sm text-muted-foreground mt-1 mb-4">
         {totalMissing} of {totalExercises} exercises still need at least one piece of content (gif, instructions, video, or images).
       </p>
+
+      <div className="mb-6 border border-border rounded-xl p-3">
+        <button
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="w-full text-sm font-medium text-left"
+        >
+          {showAddForm ? "▼" : "▶"} Add New Exercise
+        </button>
+        {showAddForm && (
+          <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Name</p>
+              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Cable Fly" className="text-sm" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Body Part</p>
+              <select
+                value={newBodyPart}
+                onChange={(e) => setNewBodyPart(e.target.value)}
+                className="w-full text-sm rounded-md border border-border bg-background px-3 py-2"
+              >
+                <option value="">Select a body part...</option>
+                {bodyParts.map((bp) => (
+                  <option key={bp.name} value={bp.name}>{bp.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Type</p>
+                <select
+                  value={newType}
+                  onChange={(e) => setNewType(e.target.value)}
+                  className="w-full text-sm rounded-md border border-border bg-background px-3 py-2"
+                >
+                  <option value="weighted">Weighted</option>
+                  <option value="bodyweight">Bodyweight</option>
+                  <option value="cardio">Cardio</option>
+                </select>
+              </div>
+              <div className="w-20">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Sets</p>
+                <Input value={newSets} onChange={(e) => setNewSets(e.target.value)} className="text-sm" />
+              </div>
+              <div className="w-20">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Reps</p>
+                <Input value={newReps} onChange={(e) => setNewReps(e.target.value)} className="text-sm" />
+              </div>
+            </div>
+            {createError && <p className="text-xs text-red-600">{createError}</p>}
+            <Button onClick={createExercise} disabled={creating} className="rounded-full">
+              {creating ? "Creating..." : "Create"}
+            </Button>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col gap-6">
         {bodyParts.map((bp) => (
@@ -163,7 +307,43 @@ export default function AdminExercisesPage() {
                           Edit
                         </button>
                       )}
+                      {deletingId !== ex.id && (
+                        <button
+                          onClick={() => startDelete(ex.id)}
+                          className="text-xs text-red-600 dark:text-red-400 shrink-0"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
+
+                    {deletingId === ex.id && (
+                      <div className="mt-3 flex flex-col gap-2 border-t border-red-200 dark:border-red-900 pt-3">
+                        <p className="text-sm text-red-600 dark:text-red-400">
+                          Are you sure you want to delete <strong>{ex.displayName || ex.name}</strong>? This cannot be undone.
+                        </p>
+                        <p className="text-xs text-muted-foreground">Type &quot;yes&quot; to confirm.</p>
+                        <Input
+                          value={deleteConfirmText}
+                          onChange={(e) => setDeleteConfirmText(e.target.value)}
+                          placeholder="yes"
+                          className="text-sm"
+                        />
+                        {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
+                        <div className="flex gap-2">
+                          <Button variant="outline" onClick={cancelDelete} className="flex-1 rounded-full">
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={() => confirmDelete(ex.id)}
+                            disabled={deleting || deleteConfirmText.trim().toLowerCase() !== "yes"}
+                            className="flex-1 rounded-full bg-red-600 hover:bg-red-700 text-white"
+                          >
+                            {deleting ? "Deleting..." : "Confirm Delete"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
 
                     {isPreviewing && (ex.gifUrl || ex.videoUrls.length > 0) && (
                       <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">

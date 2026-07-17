@@ -50,24 +50,34 @@ export default function PublicPlanPage() {
     setMessage(res.ok ? `You're now following this plan, ${data.name}! Text HERE to start.` : data.error ?? "Something went wrong.");
   }
 
-  if (loading) return <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">Loading...</div>;
+  if (loading)
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">
+        Loading...
+      </div>
+    );
 
   if (!plan) {
     return (
-      <div className="flex items-center justify-center h-screen text-sm text-center px-4">
+      <div className="min-h-screen bg-background flex items-center justify-center text-sm text-center px-4">
         <p>Plan not found.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-center h-screen bg-background overflow-hidden">
-      <div className="flex flex-col w-full max-w-sm h-full sm:h-175 sm:border sm:rounded-3xl overflow-hidden sm:shadow-md">
-        {/* Header */}
-        <div className="px-4 py-3 border-b flex flex-col gap-1.5">
-          <Link href={backHref} className="text-xs text-muted-foreground">← Back</Link>
-          <div className="flex flex-col items-center gap-0.5">
-            <p className="font-semibold text-sm">{plan.name}</p>
+    <div className="min-h-screen bg-background">
+      <div className="max-w-lg mx-auto p-6 pb-16">
+        {/* Back link */}
+        <Link href={backHref} className="text-xs text-muted-foreground hover:text-foreground mb-3 inline-block">
+          ← Back
+        </Link>
+
+        {/* Nameplate */}
+        <div className="flex items-baseline justify-between pb-4 mb-6 border-b-2 border-border">
+          <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Iron Temple</p>
+          <div className="text-right">
+            <p className="text-sm font-mono font-medium text-foreground">{plan.name}</p>
             <p className="text-xs text-muted-foreground">
               {plan.createdByName ? `By ${plan.createdByName}` : "Iron Temple"} · {plan.followerCount} following
             </p>
@@ -75,10 +85,10 @@ export default function PublicPlanPage() {
         </div>
 
         {/* Days */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
+        <div className="flex flex-col gap-3">
           {plan.goal && <p className="text-xs text-muted-foreground">Goal: {plan.goal}</p>}
           {plan.days.map((day) => (
-            <div key={day.day} className="border rounded-2xl px-4 py-3">
+            <div key={day.day} className="border border-border rounded-xl px-4 py-3">
               <p className="text-sm font-medium">
                 Day {day.day}: {day.name}
               </p>
@@ -94,11 +104,11 @@ export default function PublicPlanPage() {
         </div>
 
         {/* Follow */}
-        <div className="px-4 py-3 border-t flex flex-col gap-2">
-          <p className="text-xs font-medium text-muted-foreground">Follow this plan</p>
+        <div className="mt-6 pt-5 border-t-2 border-border flex flex-col gap-2">
+          <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Follow this plan</p>
           <div className="flex gap-2">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+15550001234" className="text-sm" />
-            <Button size="sm" onClick={handleFollow} disabled={following}>
+            <Button size="sm" onClick={handleFollow} disabled={following} className="bg-amber-500 hover:bg-amber-600 text-white">
               {following ? "..." : "Follow"}
             </Button>
           </div>

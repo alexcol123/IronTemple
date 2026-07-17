@@ -17,7 +17,8 @@
       "Bash(npx eslint *)",
       "WebSearch",
       "Bash(curl -s \"https://oss.exercisedb.dev/api/v1/exercises/bodyparts?bodyParts=chest&limit=500\")",
-      "Bash(curl -s -i \"https://oss.exercisedb.dev/api/v1/exercises/search?search=smith%20bench%20press\")"
+      "Bash(curl -s -i \"https://oss.exercisedb.dev/api/v1/exercises/search?search=smith%20bench%20press\")",
+      "Bash(npx tsx *)"
     ]
   }
 }

@@ -42,9 +42,14 @@ async function buildSummaryIfComplete(userId: string, workoutDayId: string, sess
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { userId, workoutDayId, plannedExerciseId, adHocName, adHocType, adHocTargetReps, action, input }: {
+  const { userId, workoutDayId, sessionId: explicitSessionId, plannedExerciseId, adHocName, adHocType, adHocTargetReps, action, input }: {
     userId?: string;
     workoutDayId?: string;
+    // When set (bonus sessions, or any caller that already knows exactly
+    // which session it means), used verbatim instead of the "most recent
+    // session for this day" reuse lookup below — that lookup would otherwise
+    // find and append onto an already-completed session for the same day.
+    sessionId?: string;
     plannedExerciseId?: string;
     // Picked straight from the /build-style body-part library rather than
     // typed free text (unlike SMS's ADD), so name/type are already known —
@@ -82,14 +87,22 @@ export async function POST(req: NextRequest) {
     targetReps = adHocTargetReps ?? 0;
   }
 
-  // Reuse the most recent in-progress session for this day rather than
-  // creating a new one every time — same session an SMS START would use.
-  let session = await prisma.workoutSession.findFirst({
-    where: { userId, workoutDayId },
-    orderBy: { date: "desc" },
-  });
-  if (!session) {
-    session = await prisma.workoutSession.create({ data: { userId, workoutDayId } });
+  let session;
+  if (explicitSessionId) {
+    session = await prisma.workoutSession.findUnique({ where: { id: explicitSessionId } });
+    if (!session || session.userId !== userId) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+  } else {
+    // Reuse the most recent in-progress session for this day rather than
+    // creating a new one every time — same session an SMS START would use.
+    session = await prisma.workoutSession.findFirst({
+      where: { userId, workoutDayId },
+      orderBy: { date: "desc" },
+    });
+    if (!session) {
+      session = await prisma.workoutSession.create({ data: { userId, workoutDayId } });
+    }
   }
 
   const existingLog = plannedExerciseId

@@ -17,19 +17,23 @@ export default function HowItWorksPage() {
   const { userId } = useParams<{ userId: string }>();
 
   return (
-    <div className="flex items-center justify-center h-screen bg-background overflow-hidden">
-      <div className="flex flex-col w-full max-w-sm h-full sm:h-175 sm:border sm:rounded-3xl overflow-hidden sm:shadow-md">
-        {/* Header */}
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground">← Menu</Link>
-          <p className="font-semibold text-sm">How It Works</p>
-          <div className="w-10" />
+    <div className="min-h-screen bg-background">
+      <div className="max-w-lg mx-auto p-6 pb-16">
+        {/* Back link */}
+        <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground hover:text-foreground mb-3 inline-block">
+          ← Menu
+        </Link>
+
+        {/* Nameplate */}
+        <div className="flex items-baseline justify-between pb-4 mb-6 border-b-2 border-border">
+          <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Iron Temple</p>
+          <p className="text-xs text-muted-foreground">How It Works</p>
         </div>
 
         {/* Video list */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
           {VIDEOS.map((v) => (
-            <div key={v.title} className="border rounded-2xl overflow-hidden">
+            <div key={v.title} className="border border-border rounded-xl overflow-hidden">
               <video controls className="w-full aspect-video bg-black" src={v.url} />
               <div className="px-4 py-3">
                 <p className="text-sm font-semibold">{v.title}</p>

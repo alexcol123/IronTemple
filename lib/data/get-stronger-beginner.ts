@@ -8,7 +8,7 @@ export const GET_STRONGER_BEGINNER_SPLIT: SplitDay[] = [
     name: "Squat Day",
     muscles: "Quads, Glutes, Lower Back",
     exercises: [
-      { name: "Barbell Full Squat", sets: 5, reps: 5 },
+      { name: "Squat", sets: 5, reps: 5 },
       { name: "Barbell Romanian Deadlift", sets: 3, reps: 6 },
       { name: "Cable Seated Row", sets: 3, reps: 10 },
       { name: "Lever Lying Leg Curl", sets: 3, reps: 10 },
@@ -20,7 +20,7 @@ export const GET_STRONGER_BEGINNER_SPLIT: SplitDay[] = [
     name: "Bench Day",
     muscles: "Chest, Shoulders, Triceps, Back",
     exercises: [
-      { name: "Barbell Bench Press", sets: 5, reps: 5 },
+      { name: "Bench Press", sets: 5, reps: 5 },
       { name: "Barbell Seated Overhead Press", sets: 3, reps: 6 },
       { name: "Cable Lateral Pulldown With V-bar", sets: 3, reps: 10 },
       { name: "Barbell Curl", sets: 3, reps: 10 },
@@ -33,7 +33,7 @@ export const GET_STRONGER_BEGINNER_SPLIT: SplitDay[] = [
     muscles: "Back, Hamstrings, Glutes",
     exercises: [
       { name: "Barbell Deadlift", sets: 5, reps: 3 },
-      { name: "Barbell Front Squat", sets: 3, reps: 6 },
+      { name: "Sled 45 leg press", sets: 3, reps: 8 },
       { name: "Cable Underhand Pulldown", sets: 3, reps: 10 },
       { name: "Cable Standing Rear Delt Row (with Rope)", sets: 3, reps: 12 },
       { name: "Reverse Crunch", sets: 3, reps: 20, type: "bodyweight" },

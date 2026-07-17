@@ -8,7 +8,7 @@ export const GET_STRONGER_INTERMEDIATE_SPLIT: SplitDay[] = [
     name: "Squat Day",
     muscles: "Quads, Glutes, Lower Back",
     exercises: [
-      { name: "Barbell Full Squat", sets: 5, reps: 5 },
+      { name: "Squat", sets: 5, reps: 5 },
       { name: "Barbell Romanian Deadlift", sets: 3, reps: 6 },
       { name: "Pull-up", sets: 3, reps: 6, type: "bodyweight" },
       { name: "Lever Lying Leg Curl", sets: 3, reps: 10 },
@@ -21,7 +21,7 @@ export const GET_STRONGER_INTERMEDIATE_SPLIT: SplitDay[] = [
     name: "Bench Day",
     muscles: "Chest, Triceps, Back",
     exercises: [
-      { name: "Barbell Bench Press", sets: 5, reps: 5 },
+      { name: "Bench Press", sets: 5, reps: 5 },
       { name: "Barbell Incline Bench Press", sets: 3, reps: 8 },
       { name: "Barbell Bent Over Row", sets: 3, reps: 6 },
       { name: "Barbell Curl", sets: 3, reps: 10 },

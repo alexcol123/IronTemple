@@ -48,12 +48,12 @@ export const LOSE_WEIGHT_INTERMEDIATE_SPLIT: SplitDay[] = [
     name: "Full Body D",
     muscles: "Full Body",
     exercises: [
-      { name: "Barbell Full Squat", sets: 3, reps: 12 },
+      { name: "Squat", sets: 3, reps: 12 },
       { name: "Dumbbell Incline Fly", sets: 3, reps: 12 },
       { name: "Cable Seated Wide-grip Row", sets: 3, reps: 12 },
       { name: "Dumbbell Lateral Raise", sets: 3, reps: 12 },
       { name: "Air Bike", sets: 3, reps: 20, type: "bodyweight" },
-      { name: "Stationary Bike Run V. 3", sets: 1, reps: 20, type: "cardio" },
+      { name: "Stationary Bike Run", sets: 1, reps: 20, type: "cardio" },
     ],
   },
 ]

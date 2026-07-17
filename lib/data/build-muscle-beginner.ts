@@ -9,7 +9,7 @@ export const BUILD_MUSCLE_BEGINNER_SPLIT: SplitDay[] = [
     name: "Chest and Back",
     muscles: "Chest, Back",
     exercises: [
-      { name: "Barbell Bench Press", sets: 3, reps: 6 },
+      { name: "Bench Press", sets: 3, reps: 6 },
       { name: "Barbell Incline Bench Press", sets: 3, reps: 8 },
       { name: "Cable Lateral Pulldown With V-bar", sets: 3, reps: 10 },
       { name: "Cable Seated Row", sets: 3, reps: 10 },
@@ -33,7 +33,7 @@ export const BUILD_MUSCLE_BEGINNER_SPLIT: SplitDay[] = [
     name: "Legs",
     muscles: "Quads, Hamstrings, Calves",
     exercises: [
-      { name: "Barbell Full Squat", sets: 3, reps: 6 },
+      { name: "Squat", sets: 3, reps: 6 },
       { name: "Barbell Straight Leg Deadlift", sets: 3, reps: 8 },
       { name: "Dumbbell Lunge", sets: 3, reps: 10 },
       { name: "Barbell Standing Calf Raise", sets: 3, reps: 12 },

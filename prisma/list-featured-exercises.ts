@@ -34,7 +34,7 @@ async function run() {
     lines.push(`## ${bp} (${list.length})`);
     lines.push("");
     for (const ex of list) {
-      lines.push(`- ${ex.name} — ${ex.type}, default ${ex.defaultSets}x${ex.defaultReps}`);
+      lines.push(`- ${ex.displayName || ex.name} — ${ex.type}, default ${ex.defaultSets}x${ex.defaultReps}`);
     }
     lines.push("");
   }

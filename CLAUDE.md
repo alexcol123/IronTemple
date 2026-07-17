@@ -171,6 +171,16 @@ The pitch requires Stripe recurring billing before you can demo it live:
 
 ## Feature Backlog
 
+### Gate Weekly Progress to a Weekly Release (not always-on-demand)
+
+`/progress/{userId}` (a positive-first recap of PRs, consistency, and a hero exercise's climb, computed live in `app/api/progress/[userId]/route.ts`) is currently viewable on demand, any time — an intentional testing shortcut (see the comment on "Weekly Progress" in `app/menu/[userId]/page.tsx`'s `ITEMS` array).
+
+The real version should feel like a school report card: locked until it's actually ready, not a page you can just go check whenever. Two ways to gate it were considered — a fixed time-based unlock (e.g. always unlocks Sunday evening) vs. tying the unlock to a real per-week "generated/sent" event. **Went with the second**: gate on a per-week generated/sent flag or timestamp, not just a fixed day/time, so the web page and the future proactive weekly SMS send are pinned to the same real event instead of two clocks that can drift apart.
+
+**What it needs:** a way to record, per user per week, that the report has been "released" (e.g. a timestamp set the moment the weekly SMS goes out, or a scheduled job that flips it at week's end) — the page then checks that flag before rendering this week's recap instead of always computing and showing it live.
+
+**Do NOT build until:** the proactive weekly/monthly SMS send itself exists — the gate is meant to hang off that real send event, not an arbitrary timer invented just to lock the page.
+
 ### Move Exercise Images/GIFs from `public/` to Supabase Storage
 
 Exercise demo images/GIFs (from the bulk-imported `exercise-dataset`) are currently served straight out of the Next.js `public/` folder — an intentional MVP shortcut, not the long-term plan.
@@ -290,6 +300,48 @@ A standalone command, separate from workout logging, that tracks daily macros an
 - Surfaced on the private history page alongside workout data, not just in the SMS reply
 
 **Do NOT build until:** the 8 real workout plans + progression/PR detection are done — this is a parallel feature, not a blocker, and shouldn't distract from finishing the core workout loop first.
+
+---
+
+### AI Coach / Agent Features (future)
+
+Brainstormed list of where an LLM agent could genuinely help, beyond the fixed 12 onboarding plans:
+
+- **AI Plan Builder** — someone describes goal/equipment/schedule in plain language, agent assembles a plan instead of picking from the 12 fixed templates.
+- **Progress Review / Coaching Check-ins** — periodic automated review of logged sessions (already tracked: `WorkoutSession`/`ExerciseLog`/`SetLog`) to surface real coaching observations, e.g. "bench has been stuck at 185 for 3 weeks, want a deload?" Fits the SMS-first design — the app can *say* something about the data, not just chart it.
+- **Conversational plan adjustment** — "my shoulder hurts, swap something in" instead of memorizing ADD/REMOVE syntax.
+- **CrossFit/AMRAP parsing** — an LLM parser could handle free-form formats ("21-15-9 thrusters and pull-ups, 8:45") far more flexibly than hand-written regex ever will (see the CrossFit parser gap noted elsewhere in this file).
+- **Creator-side draft assistant** — a trainer describes their niche/philosophy, agent proposes a starting plan in `/builder` for them to edit, instead of building exercise-by-exercise from scratch.
+- **Natural-language exercise search** — "glute exercises I can do with just a band" instead of tab-clicking — needs an equipment-tag field on `ExerciseLibrary` first.
+- **Form-check video review** — computer vision on submitted videos. Speculative, high effort, and reopens the same liability question as injury-modification advice — hold off.
+
+**The one non-negotiable rule for all of the above:** every AI feature must stay grounded to real, curated data — never let it freely generate an exercise name, only ever select from real `ExerciseLibrary` rows. Specifically, ground selection to `featured: true` (the ~255 exercises in `most-common-exercises-in-data.md`), not the full ~1,334-row library. The featured set is the one that's actually been manually verified this project (real matching video, correct instructions, no duplicates); the rest is still raw, unverified bulk-import data and would risk resurfacing exactly the kinds of bugs found and fixed by hand (wrong instructions on an exercise, broken/unfeatured references, near-duplicate entries).
+
+**Important implementation detail:** enforce this via a live query (`WHERE featured = true`) against the database, not by reading the static `most-common-exercises-in-data.md` file — that file is just a point-in-time export for human review and goes stale the moment anything gets toggled in the admin panel.
+
+**Do NOT build until:** there's a clear near-term feature to attach this to (e.g. the AI Plan Builder or Progress Review specifically) — this section exists to lock in the grounding principle before any of these get built, not to greenlight building all of them now.
+
+---
+
+### Equipment-Aware Filtering (future)
+
+An athlete describes what equipment they actually have access to (e.g. "just a bench, a barbell, and dumbbells") and the app filters/substitutes exercises accordingly, instead of assuming full commercial-gym access.
+
+**Why this is separate from the mobility/injury idea below:** equipment filtering is a pure data problem — tag each `ExerciseLibrary` row with what equipment it needs, then filter. Low risk, no liability concern, buildable whenever there's real demand for it.
+
+**What it needs:** an equipment field on `ExerciseLibrary` (e.g. `"barbell" | "dumbbell" | "machine" | "cable" | "bodyweight" | "kettlebell"`), then a filter step wherever exercises get selected (onboarding, `/build`, ad-hoc `ADD`).
+
+**Do NOT build until:** a real user actually hits this limitation — this is speculative until then, same reasoning as everything else deferred pending real usage.
+
+### Mobility/Injury-Aware Substitutions (future, higher risk)
+
+The harder version of the idea above: "I have knee pain, don't give me exercises that aggravate it."
+
+**Why this needs more care than equipment filtering:** recommending exercise modifications for pain/injury edges into medical-advice territory — a real liability question, not just an engineering one. An LLM freely improvising "safe" substitutions for someone's joint pain is a genuine risk if it gets it wrong.
+
+**The safe path, if this ever gets built:** a pre-vetted, coach-approved substitution list (e.g. "if knee pain, avoid X, prefer Y") rather than letting an agent freely decide what's safe. Same "ground it to curated data, don't let it freely generate" principle as the AI Coach section above, just applied to a higher-stakes decision.
+
+**Do NOT build until:** there's real trainer/professional input on the substitution rules — this is not a pure engineering problem and shouldn't be treated as one.
 
 ---
 

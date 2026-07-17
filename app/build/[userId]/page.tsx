@@ -227,16 +227,20 @@ export default function BuildPage() {
   }
 
   return (
-    <div className="flex items-center justify-center h-screen bg-background overflow-hidden">
-      <div className="flex flex-col w-full max-w-sm h-full sm:h-175 sm:border sm:rounded-3xl overflow-hidden sm:shadow-md">
-        {/* Header */}
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground">← Menu</Link>
-          <p className="font-semibold text-sm">Build Your Workout</p>
-          <div className="w-10" />
+    <div className="min-h-screen bg-background">
+      <div className="max-w-lg mx-auto p-6 pb-16">
+        {/* Back link */}
+        <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground hover:text-foreground mb-3 inline-block">
+          ← Menu
+        </Link>
+
+        {/* Nameplate */}
+        <div className="flex items-baseline justify-between pb-4 mb-6 border-b-2 border-border">
+          <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Iron Temple</p>
+          <p className="text-xs text-muted-foreground">Build Your Workout</p>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-5">
+        <div className="flex flex-col gap-5">
           <p className="text-xs text-muted-foreground bg-muted rounded-xl px-3 py-2">
             Weeks reset every Monday. Day 1 just means your first workout that week — even if that&apos;s a Wednesday, not literally Monday.
           </p>
@@ -294,7 +298,7 @@ export default function BuildPage() {
                   onClick={() => setGoal(g.value)}
                   className={`flex items-center justify-between text-sm text-left px-3 py-2 rounded-xl border transition-colors ${
                     goal === g.value
-                      ? "bg-primary text-primary-foreground border-primary"
+                      ? "bg-amber-500 text-white border-amber-500"
                       : "border-border text-foreground hover:bg-muted"
                   }`}
                 >
@@ -325,7 +329,7 @@ export default function BuildPage() {
               const displayedExercises = showAll ? matchingSearch : matchingSearch.filter((ex) => ex.featured);
               const hiddenCount = matchingSearch.length - displayedExercises.length;
               return (
-                <div key={dayIndex} className="border rounded-2xl p-3 flex flex-col gap-3">
+                <div key={dayIndex} className="border border-border rounded-xl p-3 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold">Day {dayIndex + 1}</p>
                     {days.length > 1 && (
@@ -347,7 +351,7 @@ export default function BuildPage() {
                           onClick={() => toggleBodyPart(dayIndex, bp.name)}
                           className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                             day.bodyParts.includes(bp.name)
-                              ? "bg-primary text-primary-foreground border-primary"
+                              ? "bg-amber-500 text-white border-amber-500"
                               : "border-border text-foreground hover:bg-muted"
                           }`}
                         >
@@ -477,10 +481,8 @@ export default function BuildPage() {
           </button>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
 
-        <div className="px-4 py-3 border-t">
-          <Button onClick={handleSave} disabled={saving} className="w-full rounded-full">
+          <Button onClick={handleSave} disabled={saving} className="w-full rounded-full bg-amber-500 hover:bg-amber-600 text-white">
             {saving ? "Saving..." : "Save Plan"}
           </Button>
         </div>
@@ -504,7 +506,7 @@ export default function BuildPage() {
               </button>
             </div>
             <div className="p-4 flex flex-col gap-3">
-              <div className="border rounded-2xl overflow-hidden">
+              <div className="border border-border rounded-xl overflow-hidden">
                 <img
                   src={previewExercise.gifUrl ?? previewExercise.imageUrls?.[0]}
                   alt={previewExercise.displayName || previewExercise.name}

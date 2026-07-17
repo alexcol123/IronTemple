@@ -618,7 +618,7 @@ export async function handleMessage(
     return {
       reply: `Bonus session: ${chosen.name}\n\n${list}\n\nType START when ready.`,
       nextState: "workout_ready",
-      context: { userId, workoutDayId: chosen.workoutDayId, exercises: chosen.exercises, exerciseIndex: 0 },
+      context: { userId, workoutDayId: chosen.workoutDayId, exercises: chosen.exercises, exerciseIndex: 0, isBonus: true },
     };
   }
 
@@ -674,11 +674,19 @@ export async function handleMessage(
   // Workout ready — waiting for START
   if (state === "workout_ready") {
     if (input === "START") {
-      const { exercises, userId, workoutDayId } = context as { exercises: Exercise[]; userId: string; workoutDayId: string };
-      // Reuse an already-in-progress session for this day rather than always
-      // creating a new one — the app may have already started (and logged
-      // some of) this exact session before this text ever arrived.
-      let session = await prisma.workoutSession.findFirst({ where: { userId, workoutDayId }, orderBy: { date: "desc" } });
+      const { exercises, userId, workoutDayId, isBonus } = context as {
+        exercises: Exercise[];
+        userId: string;
+        workoutDayId: string;
+        isBonus?: boolean;
+      };
+      // A bonus session is always brand new — reusing "most recent session for
+      // this day" would just find the already-completed one from earlier this
+      // week (that's the whole reason it's being offered as a bonus) and
+      // immediately report it as finished instead of starting a real extra one.
+      let session = isBonus
+        ? await prisma.workoutSession.create({ data: { userId, workoutDayId } })
+        : await prisma.workoutSession.findFirst({ where: { userId, workoutDayId }, orderBy: { date: "desc" } });
       if (!session) {
         session = await prisma.workoutSession.create({ data: { userId, workoutDayId } });
       }

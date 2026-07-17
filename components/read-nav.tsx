@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { label: "History", path: "history" },
   { label: "PRs", path: "prs" },
+  { label: "Progress", path: "progress" },
   { label: "Menu", path: "menu" },
 ];
 

@@ -25,8 +25,17 @@ type SessionExercise = {
   imageUrls?: string[];
 };
 type Session =
-  | { allDone: true; totalDays: number }
-  | { allDone: false; workoutDayId: string; dayName: string; nextDayNumber: number; totalDays: number; exercises: SessionExercise[] };
+  | { allDone: true; totalDays: number; bonusOptions: { workoutDayId: string; name: string }[] }
+  | {
+      allDone: false;
+      sessionId: string | null;
+      isBonus: boolean;
+      workoutDayId: string;
+      dayName: string;
+      nextDayNumber: number;
+      totalDays: number;
+      exercises: SessionExercise[];
+    };
 
 // The real exercise picker library, fetched from the database instead of the
 // old static body-parts.ts file.
@@ -99,17 +108,35 @@ export default function TodayPage() {
   const [completion, setCompletion] = useState<Completion | null>(null);
   const [showHowTo, setShowHowTo] = useState(false);
   const [libraryBodyParts, setLibraryBodyParts] = useState<LibraryBodyPart[]>([]);
+  // Set once someone picks a bonus day after finishing everything planned —
+  // keeps every subsequent load() pointed at that exact extra session instead
+  // of falling back to the normal "next day" computation, which would just
+  // report allDone again.
+  const [bonusSessionId, setBonusSessionId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!userId) return;
-    fetch(`/api/today/session?userId=${encodeURIComponent(userId)}`)
+    const url = bonusSessionId
+      ? `/api/today/session?userId=${encodeURIComponent(userId)}&sessionId=${encodeURIComponent(bonusSessionId)}`
+      : `/api/today/session?userId=${encodeURIComponent(userId)}`;
+    fetch(url)
       .then((r) => r.json())
       .then((data) => setSession(data.session));
-  }, [userId]);
+  }, [userId, bonusSessionId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  async function startBonus(workoutDayId: string) {
+    const res = await fetch("/api/today/bonus", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, workoutDayId }),
+    });
+    const data = await res.json();
+    if (data.sessionId) setBonusSessionId(data.sessionId);
+  }
 
   useEffect(() => {
     fetch("/api/exercise-library")
@@ -180,17 +207,19 @@ export default function TodayPage() {
     if (!session || session.allDone || (!selectedId && !adHocPick)) return;
     setError("");
     setSaving(true);
+    const sessionIdField = session.sessionId ? { sessionId: session.sessionId } : {};
     const body = adHocPick
       ? {
           userId,
           workoutDayId: session.workoutDayId,
+          ...sessionIdField,
           adHocName: adHocPick.name,
           adHocType: adHocPick.type,
           adHocTargetReps: adHocPick.targetReps,
           action,
           input,
         }
-      : { userId, workoutDayId: session.workoutDayId, plannedExerciseId: selectedId, action, input };
+      : { userId, workoutDayId: session.workoutDayId, ...sessionIdField, plannedExerciseId: selectedId, action, input };
     const res = await fetch("/api/today/log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -240,28 +269,31 @@ export default function TodayPage() {
   const pickerHiddenCount = pickerMatchingSearch.length - pickerDisplayed.length;
 
   return (
-    <div className="flex items-center justify-center h-screen bg-background overflow-hidden">
-      <div className="flex flex-col w-full max-w-sm h-full sm:h-175 sm:border sm:rounded-3xl overflow-hidden sm:shadow-md">
-        {/* Header */}
-        <div className="px-4 py-3 border-b flex items-center justify-between">
+    <div className="min-h-screen bg-background">
+      <div className="max-w-lg mx-auto p-6 pb-16">
+        {/* Back/close row */}
+        <div className="flex items-center justify-between mb-3">
           {howToTarget ? (
-            <div className="w-10" />
+            <div />
           ) : !completion && (selected || picking) ? (
-            <button onClick={picking ? closePicker : backToList} className="text-xs text-muted-foreground">← Back</button>
+            <button onClick={picking ? closePicker : backToList} className="text-xs text-muted-foreground hover:text-foreground">← Back</button>
           ) : (
-            <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground">← Menu</Link>
+            <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground hover:text-foreground">← Menu</Link>
           )}
-          <p className="font-semibold text-sm">
-            {completion ? "Workout Complete!" : howToTarget ? "How To" : picking ? "Add Exercise" : "Today's Workout"}
-          </p>
-          {howToTarget ? (
-            <button onClick={closeHowTo} className="w-10 text-right text-sm text-muted-foreground">✕</button>
-          ) : (
-            <div className="w-10" />
+          {howToTarget && (
+            <button onClick={closeHowTo} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+        {/* Nameplate */}
+        <div className="flex items-baseline justify-between pb-4 mb-6 border-b-2 border-border">
+          <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Iron Temple</p>
+          <p className="text-xs text-muted-foreground">
+            {completion ? "Workout Complete!" : howToTarget ? "How To" : picking ? "Add Exercise" : "Today's Workout"}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-4">
           {completion && (
             <div className="flex flex-col gap-3">
               <div className="flex flex-col items-center text-center gap-1 py-2">
@@ -308,7 +340,7 @@ export default function TodayPage() {
 
               <Link
                 href={`/menu/${userId}`}
-                className="text-sm text-center px-4 py-2 rounded-full border hover:bg-muted transition-colors"
+                className="text-sm text-center px-4 py-2 rounded-full border border-border hover:bg-muted transition-colors"
               >
                 Back to Menu
               </Link>
@@ -320,9 +352,27 @@ export default function TodayPage() {
           {!completion && session === null && <p className="text-sm text-muted-foreground text-center mt-8">No active plan found.</p>}
 
           {!completion && session?.allDone && (
-            <p className="text-sm text-muted-foreground text-center mt-8">
-              You&apos;ve already hit all {session.totalDays} sessions this week — nice work! Text HERE for a bonus session.
-            </p>
+            <div className="flex flex-col gap-3 mt-4">
+              <p className="text-sm text-muted-foreground text-center">
+                You&apos;ve already hit all {session.totalDays} sessions this week — nice work!
+              </p>
+              {session.bonusOptions.length > 0 && (
+                <>
+                  <p className="text-xs text-muted-foreground text-center">Want a bonus session anyway?</p>
+                  <div className="flex flex-col gap-2">
+                    {session.bonusOptions.map((opt) => (
+                      <button
+                        key={opt.workoutDayId}
+                        onClick={() => startBonus(opt.workoutDayId)}
+                        className="border border-border rounded-xl px-4 py-3 text-sm font-medium hover:bg-muted transition-colors"
+                      >
+                        {opt.name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           )}
 
           {/* List view */}
@@ -330,7 +380,7 @@ export default function TodayPage() {
             <>
               <div>
                 <p className="text-sm font-medium">
-                  Day {session.nextDayNumber} of {session.totalDays} this week
+                  {session.isBonus ? "Bonus session" : `Day ${session.nextDayNumber} of ${session.totalDays} this week`}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {session.dayName} · {doneCount} of {totalCount} done
@@ -342,7 +392,7 @@ export default function TodayPage() {
                   <button
                     key={ex.id}
                     onClick={() => openExercise(ex.id)}
-                    className="border rounded-2xl px-4 py-3 flex items-center justify-between text-left hover:bg-muted transition-colors"
+                    className="border border-border rounded-xl px-4 py-3 flex items-center justify-between text-left hover:bg-muted transition-colors"
                   >
                     <div>
                       <p className="text-sm font-medium">{ex.name}</p>
@@ -375,7 +425,7 @@ export default function TodayPage() {
                     onClick={() => setPickerBodyPart(bp.name)}
                     className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                       pickerBodyPart === bp.name
-                        ? "bg-primary text-primary-foreground border-primary"
+                        ? "bg-amber-500 text-white border-amber-500"
                         : "border-border text-foreground hover:bg-muted"
                     }`}
                   >
@@ -396,7 +446,7 @@ export default function TodayPage() {
                   <button
                     key={ex.name}
                     onClick={() => pickAdHocExercise(ex)}
-                    className="border rounded-2xl px-4 py-3 flex items-center justify-between text-left hover:bg-muted transition-colors"
+                    className="border border-border rounded-xl px-4 py-3 flex items-center justify-between text-left hover:bg-muted transition-colors"
                   >
                     <p className="text-sm font-medium">{ex.displayName || ex.name}</p>
                     <span className="text-xs text-muted-foreground">
@@ -432,7 +482,7 @@ export default function TodayPage() {
               to the static image when an exercise has no gif yet. */}
           {!completion && howToTarget && (howToTarget.gifUrl || howToTarget.imageUrls?.[0]) && (
             <div className="flex flex-col gap-3">
-              <div className="border rounded-2xl overflow-hidden">
+              <div className="border border-border rounded-xl overflow-hidden">
                 <img
                   src={howToTarget.gifUrl ?? howToTarget.imageUrls?.[0]}
                   alt={howToTarget.name}
@@ -450,7 +500,7 @@ export default function TodayPage() {
               {howToTarget.videoUrls?.map((url, i) => {
                 const embedUrl = getYouTubeEmbedUrl(url);
                 return embedUrl ? (
-                  <div key={i} className="rounded-2xl overflow-hidden aspect-video">
+                  <div key={i} className="rounded-xl overflow-hidden aspect-video">
                     <iframe
                       src={embedUrl}
                       title={`${howToTarget.name} video tutorial ${i + 1}`}
@@ -465,7 +515,7 @@ export default function TodayPage() {
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-center px-4 py-2 rounded-full border hover:bg-muted transition-colors"
+                    className="text-sm text-center px-4 py-2 rounded-full border border-border hover:bg-muted transition-colors"
                   >
                     Watch video {i + 1}
                   </a>
@@ -474,7 +524,7 @@ export default function TodayPage() {
 
               <button
                 onClick={closeHowTo}
-                className="text-sm text-center px-4 py-2 rounded-full border hover:bg-muted transition-colors"
+                className="text-sm text-center px-4 py-2 rounded-full border border-border hover:bg-muted transition-colors"
               >
                 Close
               </button>
@@ -525,7 +575,11 @@ export default function TodayPage() {
                     Skip
                   </Button>
                 )}
-                <Button onClick={() => handleAction("log")} disabled={saving || !input.trim()} className="flex-1 rounded-full">
+                <Button
+                  onClick={() => handleAction("log")}
+                  disabled={saving || !input.trim()}
+                  className="flex-1 rounded-full bg-amber-500 hover:bg-amber-600 text-white"
+                >
                   {saving ? "Saving..." : "Save"}
                 </Button>
               </div>

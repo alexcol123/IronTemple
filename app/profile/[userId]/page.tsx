@@ -72,11 +72,16 @@ export default function ProfileByIdPage() {
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center h-screen text-sm text-muted-foreground">Loading...</div>;
+  if (loading)
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center text-sm text-muted-foreground">
+        Loading...
+      </div>
+    );
 
   if (!profile) {
     return (
-      <div className="flex items-center justify-center h-screen text-sm text-center px-4">
+      <div className="min-h-screen bg-background flex items-center justify-center text-sm text-center px-4">
         <p>Profile not found.</p>
       </div>
     );
@@ -86,23 +91,27 @@ export default function ProfileByIdPage() {
     new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
   return (
-    <div className="flex items-center justify-center h-screen bg-background overflow-hidden">
-      <div className="flex flex-col w-full max-w-sm h-full sm:h-175 sm:border sm:rounded-3xl overflow-hidden sm:shadow-md">
-        {/* Header */}
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground">← Menu</Link>
-          <p className="font-semibold text-sm">My Info</p>
-          <div className="w-10" />
+    <div className="min-h-screen bg-background">
+      <div className="max-w-lg mx-auto p-6 pb-16">
+        {/* Back link */}
+        <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground hover:text-foreground mb-3 inline-block">
+          ← Menu
+        </Link>
+
+        {/* Nameplate */}
+        <div className="flex items-baseline justify-between pb-4 mb-6 border-b-2 border-border">
+          <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Iron Temple</p>
+          <p className="text-xs text-muted-foreground">My Info</p>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-5">
+        <div className="flex flex-col gap-5">
           <div className="text-xs text-muted-foreground">
             <p>{profile.phone}</p>
             <p>Member since {fmt(profile.createdAt)}</p>
           </div>
 
           {profile.planName && (
-            <div className="border rounded-2xl px-3 py-2">
+            <div className="border border-border rounded-xl px-3 py-2">
               <p className="text-xs text-muted-foreground">Currently on</p>
               <p className="text-sm font-medium">{profile.planName}</p>
             </div>
@@ -122,7 +131,7 @@ export default function ProfileByIdPage() {
                   onClick={() => setGoalPlanName(g.planName)}
                   className={`text-sm text-left px-3 py-2 rounded-xl border transition-colors ${
                     goalPlanName === g.planName
-                      ? "bg-primary text-primary-foreground border-primary"
+                      ? "bg-amber-500 text-white border-amber-500"
                       : "border-border text-foreground hover:bg-muted"
                   }`}
                 >
@@ -141,7 +150,7 @@ export default function ProfileByIdPage() {
                   onClick={() => setTierKey(t.key)}
                   className={`text-sm text-left px-3 py-2 rounded-xl border transition-colors ${
                     tierKey === t.key
-                      ? "bg-primary text-primary-foreground border-primary"
+                      ? "bg-amber-500 text-white border-amber-500"
                       : "border-border text-foreground hover:bg-muted"
                   }`}
                 >
@@ -152,10 +161,8 @@ export default function ProfileByIdPage() {
           </div>
 
           {savedMessage && <p className="text-xs text-muted-foreground">{savedMessage}</p>}
-        </div>
 
-        <div className="px-4 py-3 border-t">
-          <Button onClick={handleSave} disabled={!hasChanges || saving} className="w-full rounded-full">
+          <Button onClick={handleSave} disabled={!hasChanges || saving} className="w-full rounded-full bg-amber-500 hover:bg-amber-600 text-white">
             {saving ? "Saving..." : "Save Changes"}
           </Button>
         </div>
