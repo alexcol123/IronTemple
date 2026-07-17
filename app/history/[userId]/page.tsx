@@ -248,7 +248,7 @@ export default function HistoryByIdPage() {
                             {!ex.skipped && ex.sets.length > 0 && !isEditing && (
                               <button
                                 onClick={() => startEditing(ex)}
-                                className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                                className="text-xs text-muted-foreground hover:text-foreground underline py-1 px-1"
                               >
                                 Edit
                               </button>
@@ -262,11 +262,12 @@ export default function HistoryByIdPage() {
                           )}
 
                           {isEditing && (
-                            <div className="mt-1.5 flex flex-col gap-1.5">
+                            <div className="mt-2 flex flex-col gap-2.5">
                               {ex.sets.map((s) => (
-                                <div key={s.id} className="flex items-center gap-1.5">
+                                <div key={s.id} className="flex items-center gap-2">
                                   <input
                                     type="number"
+                                    inputMode="decimal"
                                     value={draftSets[s.id]?.weight ?? ""}
                                     onChange={(e) =>
                                       setDraftSets((prev) => ({
@@ -274,11 +275,12 @@ export default function HistoryByIdPage() {
                                         [s.id]: { ...prev[s.id], weight: e.target.value },
                                       }))
                                     }
-                                    className="w-16 text-xs border border-border rounded px-1.5 py-0.5 bg-background"
+                                    className="w-20 text-lg font-medium text-center border border-border rounded-xl px-2 py-3 bg-background"
                                   />
-                                  <span className="text-xs text-muted-foreground">lbs x</span>
+                                  <span className="text-sm text-muted-foreground">lbs ×</span>
                                   <input
                                     type="number"
+                                    inputMode="numeric"
                                     value={draftSets[s.id]?.reps ?? ""}
                                     onChange={(e) =>
                                       setDraftSets((prev) => ({
@@ -286,23 +288,23 @@ export default function HistoryByIdPage() {
                                         [s.id]: { ...prev[s.id], reps: e.target.value },
                                       }))
                                     }
-                                    className="w-14 text-xs border border-border rounded px-1.5 py-0.5 bg-background"
+                                    className="w-20 text-lg font-medium text-center border border-border rounded-xl px-2 py-3 bg-background"
                                   />
-                                  <span className="text-xs text-muted-foreground">reps</span>
+                                  <span className="text-sm text-muted-foreground">reps</span>
                                 </div>
                               ))}
-                              <div className="flex gap-2 mt-0.5">
+                              <div className="flex gap-2 mt-1">
                                 <button
                                   onClick={() => saveEditing(ex)}
                                   disabled={saving}
-                                  className="text-[10px] font-medium px-2 py-1 rounded bg-amber-500 text-white disabled:opacity-50"
+                                  className="text-sm font-medium px-4 py-2.5 rounded-xl bg-amber-500 text-white disabled:opacity-50"
                                 >
                                   {saving ? "Saving..." : "Save"}
                                 </button>
                                 <button
                                   onClick={() => setEditingExerciseId(null)}
                                   disabled={saving}
-                                  className="text-[10px] px-2 py-1 rounded border border-border disabled:opacity-50"
+                                  className="text-sm px-4 py-2.5 rounded-xl border border-border disabled:opacity-50"
                                 >
                                   Cancel
                                 </button>

@@ -1,44 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseSets, parseMinutes, parseReps, detectInputFormat, getBestWeightPR, type SetEntry } from "@/lib/sms-engine";
-
-// Builds the same completion summary SMS does, but richer: this is the app's
-// one chance to celebrate the whole session at once (SMS only ever calls out
-// a PR from the single exercise you just logged, since its prMessage resets
-// per-message). isPR reads the hitPR flag recorded at log time rather than
-// being recomputed here — an additive edit reuses the same ExerciseLog row,
-// so "compare this session's sets against other sessions" would wrongly
-// exclude the earlier sets in this same row that a later append needs to beat.
-async function buildSummaryIfComplete(userId: string, workoutDayId: string, sessionId: string) {
-  const activeExerciseCount = await prisma.plannedExercise.count({ where: { workoutDayId, active: true } });
-  const logs = await prisma.exerciseLog.findMany({
-    where: { sessionId },
-    include: { sets: { orderBy: { setNumber: "asc" } }, plannedExercise: true },
-    orderBy: { order: "asc" },
-  });
-  const realLogCount = logs.filter((l) => l.plannedExerciseId !== null).length;
-  if (realLogCount < activeExerciseCount) return null;
-
-  const lines = logs.map((log) => {
-    const name = log.plannedExercise?.name ?? log.customName ?? "Unknown";
-    const type = log.plannedExercise?.type ?? log.type;
-    if (log.skipped) return { text: `${name}: SKIPPED`, isPR: false };
-    if (type === "cardio") return { text: `${name}: ${log.sets[0]?.reps ?? "?"} min`, isPR: false };
-    if (type === "bodyweight") {
-      const reps = log.sets.map((s) => s.reps);
-      const total = reps.reduce((a, b) => a + b, 0);
-      return { text: `${name}: ${total} reps (${reps.join(", ")})`, isPR: false };
-    }
-    const setStr = log.sets.map((s) => `${s.weight}x${s.reps}`).join(" ");
-    return { text: `${name}: ${setStr}`, isPR: log.hitPR };
-  });
-
-  const totalSets = logs.reduce((sum, log) => sum + (log.skipped ? 0 : log.sets.length), 0);
-  const doneCount = logs.filter((l) => !l.skipped).length;
-  const hasPR = lines.some((l) => l.isPR);
-
-  return { lines, doneCount, totalSets, hasPR };
-}
+import { buildSummaryIfComplete } from "@/lib/session-helpers";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -94,10 +57,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
   } else {
-    // Reuse the most recent in-progress session for this day rather than
-    // creating a new one every time — same session an SMS START would use.
+    // Reuse the open (unfinished) session for this day rather than creating a
+    // new one every time — scoped to finishedAt: null so this can never pick
+    // up an already-finished session for the same day and append onto it.
     session = await prisma.workoutSession.findFirst({
-      where: { userId, workoutDayId },
+      where: { userId, workoutDayId, finishedAt: null },
       orderBy: { date: "desc" },
     });
     if (!session) {
@@ -126,7 +90,8 @@ export async function POST(req: NextRequest) {
     await prisma.exerciseLog.create({
       data: { sessionId: session.id, plannedExerciseId, order, skipped: true },
     });
-    const summary = await buildSummaryIfComplete(userId, workoutDayId, session.id);
+    const summary = await buildSummaryIfComplete(workoutDayId, session.id);
+    if (summary) await prisma.workoutSession.update({ where: { id: session.id }, data: { finishedAt: new Date() } });
     return NextResponse.json({ success: true, workoutComplete: summary !== null, summary });
   }
 
@@ -205,6 +170,7 @@ export async function POST(req: NextRequest) {
 
   const prMessage = isNewPR ? `New PR! ${newMaxWeight} lbs (up from ${previousBestWeight}).` : null;
 
-  const summary = await buildSummaryIfComplete(userId, workoutDayId, session.id);
+  const summary = await buildSummaryIfComplete(workoutDayId, session.id);
+  if (summary) await prisma.workoutSession.update({ where: { id: session.id }, data: { finishedAt: new Date() } });
   return NextResponse.json({ success: true, prMessage, workoutComplete: summary !== null, summary });
 }

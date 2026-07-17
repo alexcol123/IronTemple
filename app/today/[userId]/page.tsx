@@ -18,6 +18,7 @@ type SessionExercise = {
   targetReps: number;
   status: ExerciseStatus;
   loggedSummary: string | null;
+  loggedSets: { weight: number; reps: number }[];
   recommendation: string | null;
   gifUrl?: string | null;
   instructions?: string[];
@@ -57,11 +58,12 @@ type LibraryBodyPart = { name: string; exercises: LibraryExercise[] };
 type SummaryLine = { text: string; isPR: boolean };
 type Completion = { lines: SummaryLine[]; doneCount: number; totalSets: number; hasPR: boolean };
 
-const PLACEHOLDER: Record<string, string> = {
-  weighted: "e.g. 150x10 160x8",
-  bodyweight: "e.g. 15 12 10",
-  cardio: "e.g. 20 (minutes)",
-};
+const CARDIO_PLACEHOLDER = "e.g. 20 (minutes)";
+
+type SetRow = { weight: string; reps: string };
+function makeSetRows(count: number): SetRow[] {
+  return Array.from({ length: Math.max(count, 1) }, () => ({ weight: "", reps: "" }));
+}
 
 // Picked straight from the same body-part library /build uses — the name,
 // type, and target sets/reps are already known, so logging it works exactly
@@ -88,6 +90,38 @@ function getYouTubeEmbedUrl(url: string): string | null {
   return match ? `https://www.youtube.com/embed/${match[1]}` : null;
 }
 
+// Shared "are you sure" block for ending a session before every exercise is
+// logged — reused on both the resume-prompt screen and the active exercise
+// list, since either place is a reasonable moment to decide to bail early.
+function FinishConfirm({
+  remaining,
+  saving,
+  onCancel,
+  onConfirm,
+}: {
+  remaining: number;
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="border border-border rounded-xl p-4 flex flex-col gap-3">
+      <p className="text-sm">
+        Finish this workout as-is?
+        {remaining > 0 && ` The ${remaining} remaining exercise${remaining === 1 ? "" : "s"} will be marked skipped.`}
+      </p>
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={onCancel} className="flex-1 h-11 rounded-full">
+          Cancel
+        </Button>
+        <Button onClick={onConfirm} disabled={saving} className="flex-1 h-11 rounded-full bg-amber-500 hover:bg-amber-600 text-white">
+          {saving ? "Finishing..." : "Yes, finish"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function TodayPage() {
   const { userId } = useParams<{ userId: string }>();
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -102,27 +136,32 @@ export default function TodayPage() {
   // curation, someone typing a specific name wants to find it regardless.
   const [pickerExpanded, setPickerExpanded] = useState(false);
   const [input, setInput] = useState("");
+  // One row per set (weight + reps) for weighted/bodyweight exercises — mirrors
+  // the same per-set editing UI already used on /history, instead of a single
+  // free-text field requiring "150x10 160x8" shorthand. Cardio stays a single
+  // minutes field via `input` since there's only ever one number to log.
+  const [setRows, setSetRows] = useState<SetRow[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [completion, setCompletion] = useState<Completion | null>(null);
   const [showHowTo, setShowHowTo] = useState(false);
   const [libraryBodyParts, setLibraryBodyParts] = useState<LibraryBodyPart[]>([]);
-  // Set once someone picks a bonus day after finishing everything planned —
-  // keeps every subsequent load() pointed at that exact extra session instead
-  // of falling back to the normal "next day" computation, which would just
-  // report allDone again.
-  const [bonusSessionId, setBonusSessionId] = useState<string | null>(null);
+  // The backend now resolves "which session is open" unambiguously via
+  // finishedAt — no need to track a session id here just to keep the right
+  // one loading. This only tracks whether the CURRENT open session has
+  // already been explicitly resumed this page visit, so returning to a
+  // fresh/never-touched day never shows a pointless "Continue?" prompt, and
+  // re-arriving at a genuinely different (new) session always asks again.
+  const [confirmedSessionId, setConfirmedSessionId] = useState<string | null>(null);
+  const [confirmingFinish, setConfirmingFinish] = useState(false);
 
   const load = useCallback(() => {
     if (!userId) return;
-    const url = bonusSessionId
-      ? `/api/today/session?userId=${encodeURIComponent(userId)}&sessionId=${encodeURIComponent(bonusSessionId)}`
-      : `/api/today/session?userId=${encodeURIComponent(userId)}`;
-    fetch(url)
+    fetch(`/api/today/session?userId=${encodeURIComponent(userId)}`)
       .then((r) => r.json())
       .then((data) => setSession(data.session));
-  }, [userId, bonusSessionId]);
+  }, [userId]);
 
   useEffect(() => {
     load();
@@ -135,7 +174,31 @@ export default function TodayPage() {
       body: JSON.stringify({ userId, workoutDayId }),
     });
     const data = await res.json();
-    if (data.sessionId) setBonusSessionId(data.sessionId);
+    if (!res.ok) {
+      setError(data.error ?? "Something went wrong.");
+      return;
+    }
+    // Just explicitly chose this — skip the "Continue?" prompt for it.
+    setConfirmedSessionId(data.sessionId);
+    load();
+  }
+
+  async function finishWorkout() {
+    if (!session || session.allDone || !session.sessionId) return;
+    setSaving(true);
+    const res = await fetch("/api/today/finish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, sessionId: session.sessionId }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    setConfirmingFinish(false);
+    if (!res.ok) {
+      setError(data.error ?? "Something went wrong.");
+      return;
+    }
+    if (data.summary) setCompletion(data.summary);
   }
 
   useEffect(() => {
@@ -147,10 +210,16 @@ export default function TodayPage() {
   function openExercise(id: string) {
     setSelectedId(id);
     setAdHocPick(null);
+    // Start with just one set row — a set gets logged after it's actually
+    // done, so pre-filling every planned set's slot upfront would show blanks
+    // for sets that haven't happened yet. "+ Add set" reveals the next one
+    // when they're ready for it.
+    setSetRows(makeSetRows(1));
     setInput("");
     setError("");
     setMessage("");
     setShowHowTo(false);
+    setConfirmingFinish(false);
   }
 
   function backToList() {
@@ -159,10 +228,12 @@ export default function TodayPage() {
     setPicking(false);
     setPickerBodyPart(null);
     setPickerSearch("");
+    setSetRows([]);
     setInput("");
     setError("");
     setMessage("");
     setShowHowTo(false);
+    setConfirmingFinish(false);
   }
 
   function openPicker() {
@@ -197,10 +268,24 @@ export default function TodayPage() {
       videoUrls: full.videoUrls,
       imageUrls: full.imageUrls,
     });
+    setSetRows(makeSetRows(1));
     setInput("");
     setError("");
     setMessage("");
     setShowHowTo(false);
+  }
+
+  // Weighted rows need both fields filled to count; bodyweight only needs
+  // reps (no weight to log). Empty rows are just dropped — someone doing
+  // fewer sets than planned shouldn't have to delete rows first.
+  function serializeRows(type: string): string {
+    if (type === "bodyweight") {
+      return setRows.map((r) => r.reps.trim()).filter(Boolean).join(" ");
+    }
+    return setRows
+      .filter((r) => r.weight.trim() !== "" && r.reps.trim() !== "")
+      .map((r) => `${r.weight.trim()}x${r.reps.trim()}`)
+      .join(" ");
   }
 
   async function handleAction(action: "log" | "skip") {
@@ -208,6 +293,8 @@ export default function TodayPage() {
     setError("");
     setSaving(true);
     const sessionIdField = session.sessionId ? { sessionId: session.sessionId } : {};
+    const type = selected?.type ?? "weighted";
+    const effectiveInput = type === "cardio" ? input : serializeRows(type);
     const body = adHocPick
       ? {
           userId,
@@ -217,9 +304,9 @@ export default function TodayPage() {
           adHocType: adHocPick.type,
           adHocTargetReps: adHocPick.targetReps,
           action,
-          input,
+          input: effectiveInput,
         }
-      : { userId, workoutDayId: session.workoutDayId, ...sessionIdField, plannedExerciseId: selectedId, action, input };
+      : { userId, workoutDayId: session.workoutDayId, ...sessionIdField, plannedExerciseId: selectedId, action, input: effectiveInput };
     const res = await fetch("/api/today/log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -245,7 +332,21 @@ export default function TodayPage() {
 
   const plannedSelected =
     session && !session.allDone ? session.exercises.find((e) => e.id === selectedId) : undefined;
-  const selected = plannedSelected ?? (adHocPick ? { ...adHocPick, status: "pending" as const, loggedSummary: null, recommendation: null } : undefined);
+  const selected =
+    plannedSelected ??
+    (adHocPick ? { ...adHocPick, status: "pending" as const, loggedSummary: null, loggedSets: [], recommendation: null } : undefined);
+
+  const canSave = selected?.type === "cardio" ? input.trim().length > 0 : serializeRows(selected?.type ?? "weighted").length > 0;
+
+  function updateRow(index: number, field: "weight" | "reps", value: string) {
+    setSetRows((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  }
+  function addRow() {
+    setSetRows((prev) => [...prev, { weight: "", reps: "" }]);
+  }
+  function removeRow(index: number) {
+    setSetRows((prev) => prev.filter((_, i) => i !== index));
+  }
 
   // Same how-to panel as before selection was ever a picker-level thing —
   // just the post-selection "How do I do this?" target.
@@ -256,6 +357,11 @@ export default function TodayPage() {
 
   const doneCount = session && !session.allDone ? session.exercises.filter((e) => e.status !== "pending").length : 0;
   const totalCount = session && !session.allDone ? session.exercises.length : 0;
+  // Only prompt to resume if there's real evidence this session was already
+  // started (something logged/skipped) — a pristine, never-touched day just
+  // goes straight to the list, nothing to "continue" yet.
+  const needsResume =
+    !!session && !session.allDone && !!session.sessionId && doneCount > 0 && confirmedSessionId !== session.sessionId;
 
   const pickerSearchTerm = pickerSearch.toLowerCase();
   const pickerIsSearching = pickerSearchTerm.length > 0;
@@ -375,8 +481,49 @@ export default function TodayPage() {
             </div>
           )}
 
+          {/* Resume prompt — shown instead of the list whenever a session
+              already has real progress on it, so coming back (same day or
+              days later) always leads with "continue this," never a picker
+              or a silent jump back into the exercise list. */}
+          {!completion && !picking && needsResume && session && !session.allDone && !selected && (
+            <div className="flex flex-col gap-3">
+              <div className="border border-amber-400 bg-amber-50 dark:bg-amber-950/20 rounded-xl p-5 text-center">
+                <p className="text-xs font-bold tracking-widest uppercase text-amber-600 dark:text-amber-500 mb-1">
+                  {session.isBonus ? "Bonus session" : "In progress"}
+                </p>
+                <p className="text-base font-semibold">{session.dayName}</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {doneCount} of {totalCount} done
+                </p>
+              </div>
+
+              <Button
+                onClick={() => setConfirmedSessionId(session.sessionId)}
+                className="w-full h-12 text-base rounded-full bg-amber-500 hover:bg-amber-600 text-white"
+              >
+                Continue
+              </Button>
+
+              {!confirmingFinish ? (
+                <button
+                  onClick={() => setConfirmingFinish(true)}
+                  className="text-sm text-muted-foreground hover:text-foreground underline text-center"
+                >
+                  Finish workout instead
+                </button>
+              ) : (
+                <FinishConfirm
+                  remaining={totalCount - doneCount}
+                  saving={saving}
+                  onCancel={() => setConfirmingFinish(false)}
+                  onConfirm={finishWorkout}
+                />
+              )}
+            </div>
+          )}
+
           {/* List view */}
-          {!completion && !picking && session && !session.allDone && !selected && (
+          {!completion && !picking && !needsResume && session && !session.allDone && !selected && (
             <>
               <div>
                 <p className="text-sm font-medium">
@@ -411,6 +558,24 @@ export default function TodayPage() {
               >
                 + Add Exercise
               </button>
+
+              {doneCount > 0 &&
+                doneCount < totalCount &&
+                (!confirmingFinish ? (
+                  <button
+                    onClick={() => setConfirmingFinish(true)}
+                    className="text-xs text-muted-foreground hover:text-foreground underline self-start"
+                  >
+                    Finish workout early
+                  </button>
+                ) : (
+                  <FinishConfirm
+                    remaining={totalCount - doneCount}
+                    saving={saving}
+                    onCancel={() => setConfirmingFinish(false)}
+                    onConfirm={finishWorkout}
+                  />
+                ))}
             </>
           )}
 
@@ -535,50 +700,118 @@ export default function TodayPage() {
           {!completion && !picking && selected && !howToTarget && (
             <div className="flex flex-col gap-3">
               <div>
-                <p className="text-sm font-semibold">{selected.name}</p>
-                <p className="text-xs text-muted-foreground">{selected.targetSets} sets</p>
+                <p className="text-base font-semibold">{selected.name}</p>
+                <p className="text-sm text-muted-foreground">Aiming for {selected.targetSets} sets</p>
               </div>
 
-              {selected.recommendation && <p className="text-xs text-muted-foreground">{selected.recommendation}</p>}
-
-              {selected.loggedSummary && (
-                <p className="text-xs text-muted-foreground">Already logged: {selected.loggedSummary}</p>
-              )}
+              {selected.recommendation && <p className="text-sm text-muted-foreground">{selected.recommendation}</p>}
 
               {(selected.gifUrl || selected.imageUrls?.[0]) && (
                 <button
                   onClick={() => setShowHowTo(true)}
-                  className="text-xs font-medium text-muted-foreground underline text-left"
+                  className="text-sm font-medium text-muted-foreground underline text-left py-1"
                 >
                   How do I do this?
                 </button>
               )}
 
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={PLACEHOLDER[selected.type] ?? PLACEHOLDER.weighted}
-                className="text-sm"
-              />
+              {selected.type === "cardio" ? (
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={CARDIO_PLACEHOLDER}
+                  className="text-sm"
+                />
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  {/* Already-logged sets — read-only, so reopening an exercise
+                      shows what's actually saved instead of a blank slate.
+                      New rows below get appended on top of these, matching
+                      how the backend already accumulates sets onto the same
+                      log rather than replacing them. */}
+                  {selected.loggedSets.map((s, i) => (
+                    <div key={`logged-${i}`} className="flex items-center gap-2 opacity-60">
+                      <span className="text-xs font-semibold text-muted-foreground w-4 text-center">{i + 1}</span>
+                      {selected.type !== "bodyweight" && (
+                        <>
+                          <div className="w-20 text-lg font-medium text-center border border-border rounded-xl px-2 py-3">
+                            {s.weight}
+                          </div>
+                          <span className="text-sm text-muted-foreground">lbs ×</span>
+                        </>
+                      )}
+                      <div className="w-20 text-lg font-medium text-center border border-border rounded-xl px-2 py-3">
+                        {s.reps}
+                      </div>
+                      <span className="text-sm text-muted-foreground">reps</span>
+                      <span className="ml-auto text-xs text-muted-foreground">saved</span>
+                    </div>
+                  ))}
+                  {setRows.map((row, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-muted-foreground w-4 text-center">
+                        {selected.loggedSets.length + i + 1}
+                      </span>
+                      {selected.type !== "bodyweight" && (
+                        <>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={row.weight}
+                            onChange={(e) => updateRow(i, "weight", e.target.value)}
+                            placeholder="0"
+                            className="w-20 text-lg font-medium text-center border border-border rounded-xl px-2 py-3 bg-background"
+                          />
+                          <span className="text-sm text-muted-foreground">lbs ×</span>
+                        </>
+                      )}
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={row.reps}
+                        onChange={(e) => updateRow(i, "reps", e.target.value)}
+                        placeholder="0"
+                        className="w-20 text-lg font-medium text-center border border-border rounded-xl px-2 py-3 bg-background"
+                      />
+                      <span className="text-sm text-muted-foreground">reps</span>
+                      {setRows.length > 1 && (
+                        <button
+                          onClick={() => removeRow(i)}
+                          className="ml-auto text-muted-foreground hover:text-foreground text-lg px-2 py-2"
+                          aria-label="Remove set"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    onClick={addRow}
+                    className="text-sm font-medium px-3 py-2.5 rounded-xl border border-dashed border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  >
+                    + Add set
+                  </button>
+                </div>
+              )}
 
               {error && <p className="text-xs text-destructive">{error}</p>}
               {message && <p className="text-xs text-muted-foreground">{message}</p>}
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 mt-1">
                 {selected.status === "pending" && !adHocPick && (
                   <Button
                     variant="outline"
                     onClick={() => handleAction("skip")}
                     disabled={saving}
-                    className="flex-1 rounded-full"
+                    className="flex-1 h-12 text-base rounded-full"
                   >
                     Skip
                   </Button>
                 )}
                 <Button
                   onClick={() => handleAction("log")}
-                  disabled={saving || !input.trim()}
-                  className="flex-1 rounded-full bg-amber-500 hover:bg-amber-600 text-white"
+                  disabled={saving || !canSave}
+                  className="flex-1 h-12 text-base rounded-full bg-amber-500 hover:bg-amber-600 text-white"
                 >
                   {saving ? "Saving..." : "Save"}
                 </Button>

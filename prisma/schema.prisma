@@ -148,6 +148,18 @@ model UserPlan {
 model WorkoutSession {
   id           String        @id @default(uuid())
   date         DateTime      @default(now())
+  // Null while a session is still open — set either automatically (every
+  // exercise logged) or manually (the "Finish Workout" button), or by the app
+  // auto-closing a session that's gone stale (see STALE_SESSION_HOURS in
+  // lib/session-helpers.ts). This is the single source of truth for "which
+  // session is currently in progress" — replaces guessing from whichever
+  // session happens to have the latest date.
+  finishedAt   DateTime?
+  // True only for an extra/bonus session started after already completing
+  // every planned day this week (see /api/today/bonus) — lets the app label
+  // it "Bonus session" instead of "Day X of Y" without re-deriving that from
+  // session counts.
+  isBonus      Boolean       @default(false)
   user         User          @relation(fields: [userId], references: [id])
   userId       String
   workoutDay   WorkoutDay    @relation(fields: [workoutDayId], references: [id])

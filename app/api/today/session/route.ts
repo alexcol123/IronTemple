@@ -9,6 +9,7 @@ import {
   getEffectiveTargetReps,
   nextRepGoal,
 } from "@/lib/sms-engine";
+import { isSessionStale, finishSessionNow } from "@/lib/session-helpers";
 
 // Same recommendation text exercisePrompt builds for SMS, minus the "type
 // SKIP"/"or BUSY" instructional suffix — the app has real buttons for those,
@@ -32,7 +33,6 @@ async function recommendationFor(
 
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get("userId");
-  const bonusSessionId = req.nextUrl.searchParams.get("sessionId");
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
 
   const user = await prisma.user.findUnique({
@@ -63,10 +63,6 @@ export async function GET(req: NextRequest) {
   const activePlan = user.planHistory[0];
   if (!activePlan) return NextResponse.json({ session: null });
 
-  // Bonus mode — an explicit session (created via POST /api/today/bonus) was
-  // asked for directly, bypassing the "next day"/"latest incomplete" logic
-  // below entirely. This is how a second session on a day already completed
-  // this week gets loaded, instead of being silently mistaken for a resume.
   type SessionWithExercises = Prisma.WorkoutSessionGetPayload<{
     include: { exercises: { include: { sets: true } } };
   }>;
@@ -75,49 +71,37 @@ export async function GET(req: NextRequest) {
   let nextDayNumber: number;
   let isBonus = false;
 
-  if (bonusSessionId) {
-    const bonusSession = await prisma.workoutSession.findUnique({
-      where: { id: bonusSessionId },
-      include: { exercises: { include: { sets: { orderBy: { setNumber: "asc" } } } } },
-    });
-    if (!bonusSession || bonusSession.userId !== userId) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
-    workoutDay = activePlan.plan.days.find((d) => d.id === bonusSession.workoutDayId);
+  // The single open (unfinished) session for this user, if any — this is now
+  // the one source of truth for "what's in progress," not a guess based on
+  // whichever session happens to have the latest date. At most one session
+  // should ever be open at a time (normal or bonus), since bonus creation and
+  // the log route both check for this before creating a new one.
+  const dayIds = activePlan.plan.days.map((d) => d.id);
+  let openSession = await prisma.workoutSession.findFirst({
+    where: { userId, workoutDayId: { in: dayIds }, finishedAt: null },
+    orderBy: { date: "desc" },
+    include: { exercises: { include: { sets: { orderBy: { setNumber: "asc" } } } } },
+  });
+
+  // Gone stale (no activity in STALE_SESSION_HOURS) — close it out silently
+  // (skip whatever's left, stamp finishedAt) and fall through to normal
+  // day-progression logic, rather than resuming something long abandoned.
+  if (openSession && isSessionStale(openSession.date)) {
+    await finishSessionNow(openSession.id, openSession.workoutDayId);
+    openSession = null;
+  }
+
+  if (openSession) {
+    workoutDay = activePlan.plan.days.find((d) => d.id === openSession.workoutDayId);
     if (!workoutDay) return NextResponse.json({ error: "Workout day not found" }, { status: 404 });
-    existingSession = bonusSession;
+    existingSession = openSession;
     nextDayNumber = workoutDay.day;
-    isBonus = true;
+    isBonus = openSession.isBonus;
   } else {
     const monday = getMondayOfThisWeek();
     const sessionsThisWeek = await prisma.workoutSession.count({ where: { userId, date: { gte: monday } } });
-
-    // Prefer resuming the most recent session if it's still incomplete, rather
-    // than always deriving "next day" from the session count. Since the app is
-    // non-linear (log one exercise, come back to the list, log another), the
-    // very first log of a day would otherwise already count toward this week's
-    // total on the next page load — silently flipping the list to a different
-    // day and orphaning the rest of the one actually in progress.
-    const dayIds = activePlan.plan.days.map((d) => d.id);
-    const latestSession = await prisma.workoutSession.findFirst({
-      where: { userId, workoutDayId: { in: dayIds } },
-      orderBy: { date: "desc" },
-      include: { exercises: { include: { sets: { orderBy: { setNumber: "asc" } } } } },
-    });
-
-    workoutDay = activePlan.plan.days.find((d) => d.id === latestSession?.workoutDayId);
-    const isLatestIncomplete = workoutDay && latestSession
-      ? latestSession.exercises.filter((e) => e.plannedExerciseId !== null).length < workoutDay.exercises.length
-      : false;
-
-    existingSession = isLatestIncomplete ? latestSession : null;
-    if (isLatestIncomplete && workoutDay) {
-      nextDayNumber = workoutDay.day;
-    } else {
-      nextDayNumber = sessionsThisWeek + 1;
-      workoutDay = activePlan.plan.days.find((d) => d.day === nextDayNumber);
-      existingSession = null;
-    }
+    nextDayNumber = sessionsThisWeek + 1;
+    workoutDay = activePlan.plan.days.find((d) => d.day === nextDayNumber);
   }
 
   if (!workoutDay) {
@@ -157,6 +141,10 @@ export async function GET(req: NextRequest) {
           targetReps: ex.targetReps,
           status: log.skipped ? "skipped" : "done",
           loggedSummary: summary,
+          // Structured, not just the display string — lets the app show
+          // already-logged sets when reopening this exercise instead of a
+          // blank slate, without re-parsing loggedSummary back into numbers.
+          loggedSets: log.skipped ? [] : log.sets.map((s) => ({ weight: s.weight, reps: s.reps })),
           recommendation: null as string | null,
           ...howTo,
         };
@@ -170,6 +158,7 @@ export async function GET(req: NextRequest) {
         targetReps: ex.targetReps,
         status: "pending",
         loggedSummary: null,
+        loggedSets: [] as { weight: number; reps: number }[],
         recommendation,
         ...howTo,
       };
@@ -200,6 +189,7 @@ export async function GET(req: NextRequest) {
             : log.type === "bodyweight"
               ? log.sets.map((s) => s.reps).join(" ")
               : log.sets.map((s) => `${s.weight}x${s.reps}`).join(" "),
+        loggedSets: log.skipped ? [] : log.sets.map((s) => ({ weight: s.weight, reps: s.reps })),
         recommendation: null as string | null,
         gifUrl: libraryExercise?.gifUrl ?? null,
         instructions: libraryExercise?.instructions ?? [],

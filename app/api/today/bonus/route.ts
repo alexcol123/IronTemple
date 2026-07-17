@@ -17,6 +17,14 @@ export async function POST(req: NextRequest) {
   const day = await prisma.workoutDay.findUnique({ where: { id: workoutDayId } });
   if (!day) return NextResponse.json({ error: "Workout day not found" }, { status: 404 });
 
-  const session = await prisma.workoutSession.create({ data: { userId, workoutDayId } });
+  // Defensive: the app only ever offers bonus options when there's no open
+  // session, but guard against it server-side too — creating a second open
+  // session at once is exactly the bug this whole feature exists to prevent.
+  const alreadyOpen = await prisma.workoutSession.findFirst({ where: { userId, finishedAt: null } });
+  if (alreadyOpen) {
+    return NextResponse.json({ error: "You already have an unfinished session — continue or finish that one first." }, { status: 409 });
+  }
+
+  const session = await prisma.workoutSession.create({ data: { userId, workoutDayId, isBonus: true } });
   return NextResponse.json({ sessionId: session.id });
 }
