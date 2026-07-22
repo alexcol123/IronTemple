@@ -16,9 +16,44 @@ model User {
   phone        String           @unique
   email        String?
   createdAt    DateTime         @default(now())
+  // Exercise names the user picked to track on their Weekly Progress report
+  // (starred on /prs), capped small (see MAX_FAVORITE_EXERCISES in
+  // app/api/favorites/route.ts) — a plain string array rather than a join
+  // table since there's no per-favorite metadata and the list stays tiny.
+  favoriteExercises String[]    @default([])
   planHistory  UserPlan[]
   sessions     WorkoutSession[]
   createdPlans WorkoutPlan[]    @relation("PlanCreator")
+  creatorProfile CreatorProfile?
+}
+
+// The creator/influencer-facing profile — separate from User since almost
+// every account is a regular athlete, not a creator; keeping this here
+// avoids bloating User with fields only a small subset ever populate.
+// Prototype stage (see CLAUDE.md's creator-monetization backlog): no
+// payment/recruiter-attribution fields yet, just what's needed to make a
+// creator's public plan page feel like a real profile instead of a bare name.
+model CreatorProfile {
+  id            String   @id @default(uuid())
+  user          User     @relation(fields: [userId], references: [id])
+  userId        String   @unique
+  // Legal name — private, kept for future banking/tax/payout use, never shown
+  // publicly. User.name is kept in sync as "firstName lastName" since other
+  // parts of the app (menu, admin) still just read the plain User.name field.
+  firstName     String?
+  lastName      String?
+  // Public-facing display name (e.g. "CBum") — shown everywhere a creator's
+  // name appears publicly (plan page, previews) instead of their legal name.
+  // Falls back to firstName, then to User.name, if not set.
+  stageName     String?
+  photoUrl      String?
+  bio           String?
+  instagramUrl  String?
+  youtubeUrl    String?
+  tiktokUrl     String?
+  introVideoUrl String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 // ─── STEP 2: The workout program templates (seeded once, shared by all users) ─

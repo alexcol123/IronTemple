@@ -167,4 +167,12 @@
   html {
     @apply font-sans;
   }
+  /* Nothing on a phone-first app should ever need to scroll sideways — this
+     is a safeguard against any element (long text, a row that doesn't wrap,
+     rounding on a flex layout) occasionally overflowing its container by a
+     few pixels, which otherwise drags the whole page horizontally with it. */
+  html,
+  body {
+    overflow-x: hidden;
+  }
 }

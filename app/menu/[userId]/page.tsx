@@ -17,6 +17,8 @@ const ITEMS = [
   // Prototype-only shortcut — not user-scoped, just a straight link to the dev
   // admin tools. Remove or move once this isn't needed in the main menu anymore.
   { label: "Admin", desc: "Dev tools — exercise library, progression notes", path: "admin", static: true },
+  // Same deal — creator-side prototype tools, starting with onboarding.
+  { label: "Influencer", desc: "Creator tools — onboarding, profile setup", path: "influencer", static: true },
 ];
 
 export default function MenuPage() {

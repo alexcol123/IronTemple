@@ -15,7 +15,28 @@ type Plan = {
   createdByName: string | null;
   followerCount: number;
   days: Day[];
+  creatorPhotoUrl: string | null;
+  creatorBio: string | null;
+  creatorInstagramUrl: string | null;
+  creatorYoutubeUrl: string | null;
+  creatorTiktokUrl: string | null;
+  creatorIntroVideoUrl: string | null;
 };
+
+function getYouTubeEmbedUrl(url: string): string | null {
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/);
+  return match ? `https://www.youtube.com/embed/${match[1]}` : null;
+}
+
+// Social fields accept either a full URL or a bare "@handle" — normalize
+// either into a real clickable destination.
+function socialUrl(value: string, platform: "instagram" | "youtube" | "tiktok"): string {
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  const handle = value.replace(/^@/, "");
+  if (platform === "instagram") return `https://instagram.com/${handle}`;
+  if (platform === "youtube") return `https://youtube.com/@${handle}`;
+  return `https://tiktok.com/@${handle}`;
+}
 
 export default function PublicPlanPage() {
   const { planId } = useParams<{ planId: string }>();
@@ -83,6 +104,71 @@ export default function PublicPlanPage() {
             </p>
           </div>
         </div>
+
+        {/* Creator profile */}
+        {(plan.creatorPhotoUrl || plan.creatorBio || plan.creatorInstagramUrl || plan.creatorYoutubeUrl || plan.creatorTiktokUrl || plan.creatorIntroVideoUrl) && (
+          <div className="border border-border rounded-xl p-5 mb-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-14 h-14 rounded-full bg-muted overflow-hidden shrink-0 flex items-center justify-center">
+                {plan.creatorPhotoUrl ? (
+                  <img src={plan.creatorPhotoUrl} alt={plan.createdByName ?? "Creator"} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-xs text-muted-foreground">{plan.createdByName?.[0] ?? "?"}</span>
+                )}
+              </div>
+              <p className="text-sm font-semibold">{plan.createdByName}</p>
+            </div>
+
+            {plan.creatorBio && <p className="text-sm text-foreground mb-3">{plan.creatorBio}</p>}
+
+            {(plan.creatorInstagramUrl || plan.creatorYoutubeUrl || plan.creatorTiktokUrl) && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {plan.creatorInstagramUrl && (
+                  <a
+                    href={socialUrl(plan.creatorInstagramUrl, "instagram")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:bg-muted transition-colors"
+                  >
+                    Instagram
+                  </a>
+                )}
+                {plan.creatorYoutubeUrl && (
+                  <a
+                    href={socialUrl(plan.creatorYoutubeUrl, "youtube")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:bg-muted transition-colors"
+                  >
+                    YouTube
+                  </a>
+                )}
+                {plan.creatorTiktokUrl && (
+                  <a
+                    href={socialUrl(plan.creatorTiktokUrl, "tiktok")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:bg-muted transition-colors"
+                  >
+                    TikTok
+                  </a>
+                )}
+              </div>
+            )}
+
+            {plan.creatorIntroVideoUrl && getYouTubeEmbedUrl(plan.creatorIntroVideoUrl) && (
+              <div className="rounded-xl overflow-hidden aspect-video">
+                <iframe
+                  src={getYouTubeEmbedUrl(plan.creatorIntroVideoUrl)!}
+                  title={`${plan.createdByName ?? "Creator"} intro video`}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Days */}
         <div className="flex flex-col gap-3">

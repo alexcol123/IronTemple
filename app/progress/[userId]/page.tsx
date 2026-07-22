@@ -5,6 +5,16 @@ import { useParams } from "next/navigation";
 import { ReadNav } from "@/components/read-nav";
 
 type PR = { name: string; value: number; unit: string; previousBest: number };
+type Hero = {
+  name: string;
+  unit: "lbs" | "reps";
+  thisWeekValue: number;
+  changeType: "increase" | "reps";
+  change: number;
+  chart: { week: string; weight: number }[];
+  forward: { current: number; targetReps: number; nextWeight: number | null } | null;
+};
+type OtherTracked = { name: string; unit: "lbs" | "reps"; currentBest: number; lastLoggedDate: string };
 type ProgressData = {
   hasData: boolean;
   name?: string;
@@ -13,11 +23,9 @@ type ProgressData = {
   prsThisWeek?: PR[];
   consistency?: { hit: number; planned: number; daysHit: string[]; missed: number };
   weekStreak?: number;
-  hero?: {
-    name: string;
-    chart: { week: string; weight: number }[];
-    forward: { current: number; targetReps: number; nextWeight: number | null } | null;
-  } | null;
+  heroes?: Hero[];
+  others?: OtherTracked[];
+  usingFavorites?: boolean;
   month?: { sessions: number; newPRs: number; weekStreak: number };
 };
 
@@ -28,6 +36,10 @@ function formatDateRange(startIso: string, endIso: string): string {
   const end = new Date(endIso);
   const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
   return `${start.toLocaleDateString("en-US", opts)} – ${end.toLocaleDateString("en-US", opts)}`;
+}
+
+function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 export default function WeeklyProgressPage() {
@@ -57,7 +69,18 @@ export default function WeeklyProgressPage() {
     );
   }
 
-  const { name, weekStart, weekEnd, prsThisWeek = [], consistency, weekStreak = 0, hero, month } = data;
+  const {
+    name,
+    weekStart,
+    weekEnd,
+    prsThisWeek = [],
+    consistency,
+    weekStreak = 0,
+    heroes = [],
+    others = [],
+    usingFavorites,
+    month,
+  } = data;
   const headline = prsThisWeek[0];
   const weekStartDate = weekStart ? new Date(weekStart) : new Date();
 
@@ -154,37 +177,80 @@ export default function WeeklyProgressPage() {
           </>
         )}
 
-        {/* Hero progression chart */}
-        {hero && hero.chart.length > 1 && (
-          <>
-            <SectionLabel>{hero.name} — {hero.chart.length} week climb</SectionLabel>
-            <div className="border border-border rounded-xl p-5 mb-9">
+        {/* Hero progression cards — top 2 spotlight, favorites first (or
+            curated brag-worthy lifts before any are starred), ranked by this
+            week's weight increase, or by reps if nothing got heavier. */}
+        {heroes.map((h) => (
+          <div key={h.name} className="mb-9">
+            <SectionLabel>
+              {h.name} {h.chart.length > 1 ? `— ${h.chart.length} week climb` : ""}
+            </SectionLabel>
+            <div className="border border-border rounded-xl p-5">
               <div className="flex items-baseline justify-between mb-4">
-                <span className="text-sm font-semibold text-foreground">{hero.name}</span>
+                <span className="text-sm font-semibold text-foreground">{h.name}</span>
                 <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                  ↑ {hero.chart[hero.chart.length - 1].weight - hero.chart[0].weight} since {hero.chart.length} weeks ago
+                  {h.changeType === "increase"
+                    ? `↑ ${h.change} ${h.unit} since ${h.chart.length} week${h.chart.length === 1 ? "" : "s"} ago`
+                    : `${h.change} reps this week`}
                 </span>
               </div>
-              <div className="flex items-end gap-2.5 h-24">
-                {hero.chart.map((point, i) => {
-                  const max = Math.max(...hero.chart.map((p) => p.weight));
-                  const min = Math.min(...hero.chart.map((p) => p.weight));
-                  const range = max - min || 1;
-                  const heightPct = 30 + ((point.weight - min) / range) * 70;
-                  const isLast = i === hero.chart.length - 1;
-                  return (
-                    <div key={point.week} className="flex-1 flex flex-col items-center justify-end gap-1.5 h-full">
-                      <div
-                        className={`w-full rounded-t ${isLast ? "bg-amber-500" : "bg-amber-200 dark:bg-amber-900"}`}
-                        style={{ height: `${heightPct}%` }}
-                      />
-                      <div className={`text-xs font-mono ${isLast ? "text-amber-500 font-bold" : "text-muted-foreground"}`}>
-                        {point.weight}
+              {h.chart.length > 1 ? (
+                <div className="flex items-end gap-2.5 h-24">
+                  {h.chart.map((point, i, arr) => {
+                    const max = Math.max(...arr.map((p) => p.weight));
+                    const min = Math.min(...arr.map((p) => p.weight));
+                    const range = max - min || 1;
+                    const heightPct = 30 + ((point.weight - min) / range) * 70;
+                    const isLast = i === arr.length - 1;
+                    return (
+                      <div key={point.week} className="flex-1 flex flex-col items-center justify-end gap-1.5 h-full">
+                        <div
+                          className={`w-full rounded-t ${isLast ? "bg-amber-500" : "bg-amber-200 dark:bg-amber-900"}`}
+                          style={{ height: `${heightPct}%` }}
+                        />
+                        <div className={`text-xs font-mono ${isLast ? "text-amber-500 font-bold" : "text-muted-foreground"}`}>
+                          {point.weight}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-2xl font-extrabold font-mono text-foreground">
+                  {h.thisWeekValue} {h.unit}
+                </p>
+              )}
+
+              {h.forward && (
+                <p className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border">
+                  You&apos;re at <strong className="text-amber-600 dark:text-amber-500">{h.forward.current} lbs</strong>.
+                  Clear <strong className="text-amber-600 dark:text-amber-500">{h.forward.targetReps} reps</strong> on your
+                  top set next time and {h.forward.nextWeight} lbs is yours.
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* Everything else you're tracking that didn't make the top-2
+            spotlight this week — lighter treatment (no chart), so a quiet
+            week on your top lifts doesn't make the rest of your progress
+            vanish from the report. */}
+        {others.length > 0 && (
+          <>
+            <SectionLabel>Also tracking</SectionLabel>
+            <div className="flex flex-col gap-2 mb-9">
+              {others.map((o) => (
+                <div key={o.name} className="border border-border rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{o.name}</p>
+                    <p className="text-xs text-muted-foreground">Last logged {formatShortDate(o.lastLoggedDate)}</p>
+                  </div>
+                  <p className="text-sm font-bold font-mono text-foreground">
+                    {o.currentBest} {o.unit}
+                  </p>
+                </div>
+              ))}
             </div>
           </>
         )}
@@ -197,18 +263,6 @@ export default function WeeklyProgressPage() {
           </p>
         )}
 
-        {/* Forward look */}
-        {hero?.forward && (
-          <div className="rounded-xl border border-border p-5 mb-9 bg-amber-50/50 dark:bg-amber-950/20">
-            <p className="text-xs font-bold tracking-wide uppercase text-amber-600 dark:text-amber-500 mb-2">Next up</p>
-            <p className="text-sm text-foreground max-w-md">
-              You&apos;re at <strong className="text-amber-600 dark:text-amber-500">{hero.forward.current} lbs</strong> on{" "}
-              {hero.name}. Clear <strong className="text-amber-600 dark:text-amber-500">{hero.forward.targetReps} reps</strong>{" "}
-              on your top set next time and {hero.forward.nextWeight} lbs is yours.
-            </p>
-          </div>
-        )}
-
         {/* Month strip */}
         {month && (
           <div className="flex justify-between gap-3 pt-5 border-t-2 border-border">
@@ -216,6 +270,14 @@ export default function WeeklyProgressPage() {
             <MonthStat value={month.newPRs} label="New PRs this month" />
             <MonthStat value={month.weekStreak} label="Week streak" />
           </div>
+        )}
+
+        {(heroes.length > 0 || others.length > 0) && (
+          <p className="text-xs text-muted-foreground text-center mt-9">
+            {usingFavorites
+              ? "This report highlights your favorited exercises — pick or change them anytime on the PRs page."
+              : "Showing popular lifts from your plan — want different ones? Star your favorites on the PRs page."}
+          </p>
         )}
       </div>
     </div>

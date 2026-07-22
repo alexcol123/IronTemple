@@ -23,6 +23,11 @@ const TOPICS = [
     description: "Beginner/Intermediate/Advanced for each goal — review what onboarding actually assigns.",
   },
   {
+    href: "/influencer/creators",
+    title: "Creators",
+    description: "Every influencer onboarded so far — see who's on the app and jump to their plan, menu, or profile.",
+  },
+  {
     // John Doe (Test), phone +15555559100 — 5 weeks of detailed backdated history
     // plus 22 months of sparser long-tail history (1 session/month) on
     // Advanced Get Stronger, for testing both the weekly and all-time monthly

@@ -14,6 +14,18 @@ export async function GET(req: NextRequest) {
 
   const goalKey = await getUserGoalKey(user.id);
 
+  // Only exercises still in the active plan can be favorited — an old PR from
+  // a plan someone's since switched away from can never generate new weekly
+  // progress, so starring it would just permanently waste one of the limited
+  // favorite slots on something that can never move again.
+  const userPlan = await prisma.userPlan.findFirst({
+    where: { userId: user.id, endDate: null },
+    include: { plan: { include: { days: { include: { exercises: { where: { active: true } } } } } } },
+  });
+  const currentPlanNames = new Set(
+    userPlan?.plan.days.flatMap((d) => d.exercises.map((e) => e.name)) ?? [],
+  );
+
   // Only weighted exercises get PR/target math — bodyweight and cardio don't have
   // a meaningful "weight PR" (weight is always 0 for those).
   const logs = await prisma.exerciseLog.findMany({
@@ -77,10 +89,11 @@ export async function GET(req: NextRequest) {
       lastSession: lastSessionSummary,
       lastSessionDate: mostRecent.session.date.toISOString(),
       nextTarget,
+      inCurrentPlan: currentPlanNames.has(name),
     };
   });
 
   prs.sort((a, b) => a.name.localeCompare(b.name));
 
-  return NextResponse.json({ prs });
+  return NextResponse.json({ prs, favoriteExercises: user.favoriteExercises });
 }

@@ -58,7 +58,20 @@ export default function BuildPage() {
   const [saving, setSaving] = useState(false);
 
   const [myPlans, setMyPlans] = useState<MyPlan[]>([]);
+  const [myPlansLoaded, setMyPlansLoaded] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  // The create/edit form is hidden behind a button once someone already has
+  // plans — no reason to greet a returning creator with a big blank form
+  // every time. A first-time user with nothing yet sees it immediately.
+  const [showCreateForm, setShowCreateForm] = useState(false);
+
+  // Editing an already-created plan loads it straight into this same form
+  // (name/goal/days/exercises) instead of a separate editor — existingDayCount
+  // tracks how many of the days currently in `days` came from the loaded
+  // plan, so those specific days can't be removed here (a day with real
+  // session history can't be deleted — see app/api/build-plan/[planId]).
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [existingDayCount, setExistingDayCount] = useState(0);
 
   // The real exercise picker library, now sourced from the database instead
   // of the static body-parts.ts file.
@@ -66,8 +79,16 @@ export default function BuildPage() {
 
   // Lets someone preview an exercise before checking it — new users building
   // their first custom split shouldn't have to guess what "Cable Cross-over
-  // Variation" looks like from the name alone.
+  // Variation" looks like from the name alone. previewDayIndex is tracked
+  // alongside it so the modal's "Add to Plan" button knows which day to
+  // toggle it on — previewing several exercises in a row shouldn't leave
+  // someone unsure which one they were just looking at.
   const [previewExercise, setPreviewExercise] = useState<Exercise | null>(null);
+  const [previewDayIndex, setPreviewDayIndex] = useState<number | null>(null);
+  // The exact list visible at the moment "How do I do this?" was clicked —
+  // lets the modal's "Next" button step through the same list someone was
+  // already browsing, instead of jumping somewhere unrelated.
+  const [previewList, setPreviewList] = useState<Exercise[]>([]);
 
   useEffect(() => {
     fetch("/api/exercise-library")
@@ -78,13 +99,26 @@ export default function BuildPage() {
   // Non-featured exercises come back from the list endpoint without their
   // gif/instructions/videos/images (kept out to keep that payload small) —
   // fetch the real content here, only for the one exercise actually previewed.
-  async function previewExerciseContent(ex: Exercise) {
+  async function showPreview(ex: Exercise) {
     if (ex.featured) {
       setPreviewExercise(ex);
       return;
     }
     const full = await fetch(`/api/exercise-library/${ex.id}`).then((r) => r.json());
     setPreviewExercise({ ...ex, ...full });
+  }
+
+  function previewExerciseContent(ex: Exercise, dayIndex: number, list: Exercise[]) {
+    setPreviewDayIndex(dayIndex);
+    setPreviewList(list);
+    showPreview(ex);
+  }
+
+  function nextPreview() {
+    if (!previewExercise || previewList.length < 2) return;
+    const currentIndex = previewList.findIndex((e) => e.name === previewExercise.name);
+    const next = previewList[(currentIndex + 1) % previewList.length];
+    showPreview(next);
   }
 
   function exercisesForBodyParts(bodyParts: string[]): Exercise[] {
@@ -120,7 +154,8 @@ export default function BuildPage() {
   const loadMyPlans = useCallback(() => {
     fetch(`/api/my-plans?userId=${encodeURIComponent(userId)}`)
       .then((r) => r.json())
-      .then((data) => setMyPlans(data.plans ?? []));
+      .then((data) => setMyPlans(data.plans ?? []))
+      .finally(() => setMyPlansLoaded(true));
   }, [userId]);
 
   useEffect(() => {
@@ -138,11 +173,60 @@ export default function BuildPage() {
     if (res.ok) loadMyPlans();
   }
 
+  // Loads an existing plan straight into this same create-flow form — same
+  // name/goal fields, same day/exercise picker — so editing feels identical
+  // to building, just pre-filled instead of starting blank.
+  async function startEditPlan(planId: string) {
+    setError("");
+    const data = await fetch(`/api/plan/${planId}`).then((r) => r.json());
+    const plan = data.plan;
+    if (!plan) return;
+
+    type LoadedDay = { muscles: string; exercises: { name: string; targetSets: number; targetReps: number }[] };
+    const loadedDays: DayBuild[] = plan.days.map((d: LoadedDay) => ({
+      bodyParts: d.muscles.split(", ").filter(Boolean),
+      selectedExercises: d.exercises.map((e) => e.name),
+    }));
+
+    const sets: Record<string, number> = {};
+    const reps: Record<string, number> = {};
+    for (const d of plan.days as LoadedDay[]) {
+      for (const e of d.exercises) {
+        sets[e.name] = e.targetSets;
+        reps[e.name] = e.targetReps;
+      }
+    }
+
+    setEditingPlanId(planId);
+    setExistingDayCount(loadedDays.length);
+    setPlanName(plan.name);
+    setGoal(plan.goal ?? "");
+    setDays(loadedDays);
+    setCustomSets(sets);
+    setCustomReps(reps);
+  }
+
+  function cancelEdit() {
+    setEditingPlanId(null);
+    setExistingDayCount(0);
+    setShowCreateForm(false);
+    setPlanName("");
+    setGoal("");
+    setDays([{ bodyParts: [], selectedExercises: [] }]);
+    setCustomSets({});
+    setCustomReps({});
+    setError("");
+  }
+
   function addDay() {
     setDays((prev) => (prev.length >= 7 ? prev : [...prev, { bodyParts: [], selectedExercises: [] }]));
   }
 
   function removeDay(index: number) {
+    // A day with real session history can't be deleted (WorkoutSession rows
+    // reference it directly) — pre-existing days loaded via edit just don't
+    // get a Remove button at all (see the render below).
+    if (editingPlanId && index < existingDayCount) return;
     setDays((prev) => prev.filter((_, i) => i !== index));
   }
 
@@ -212,19 +296,33 @@ export default function BuildPage() {
       }),
     };
 
-    const res = await fetch("/api/build-plan", {
-      method: "POST",
+    const res = await fetch(editingPlanId ? `/api/build-plan/${editingPlanId}` : "/api/build-plan", {
+      method: editingPlanId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     setSaving(false);
     if (res.ok) {
-      router.push(`/menu/${userId}`);
+      if (editingPlanId) {
+        cancelEdit();
+        loadMyPlans();
+      } else {
+        router.push(`/menu/${userId}`);
+      }
     } else {
       const data = await res.json();
       setError(data.error ?? "Something went wrong.");
     }
   }
+
+  // Show the form outright for a first-timer with nothing yet; otherwise
+  // it stays behind "+ Add New Plan" (or "Edit") until asked for.
+  const formVisible = editingPlanId !== null || showCreateForm || (myPlansLoaded && myPlans.length === 0);
+
+  const previewIsChecked =
+    previewDayIndex !== null && previewExercise
+      ? (days[previewDayIndex]?.selectedExercises.includes(previewExercise.name) ?? false)
+      : false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -266,6 +364,12 @@ export default function BuildPage() {
                       >
                         View
                       </Link>
+                      <button
+                        onClick={() => startEditPlan(p.id)}
+                        className="text-xs px-2.5 py-1 rounded-full border hover:bg-muted transition-colors"
+                      >
+                        Edit
+                      </button>
                       {p.isActive ? (
                         <span className="text-xs font-medium text-muted-foreground">Active</span>
                       ) : (
@@ -284,10 +388,32 @@ export default function BuildPage() {
             </div>
           )}
 
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1.5">Plan Name</p>
-            <Input value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="e.g. Jenny's Split" className="text-sm" />
-          </div>
+          {myPlansLoaded && myPlans.length > 0 && !formVisible && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="text-sm px-3 py-2.5 rounded-xl border border-dashed border-border text-muted-foreground hover:bg-muted transition-colors"
+            >
+              + Add New Plan
+            </button>
+          )}
+
+          {formVisible && (editingPlanId || showCreateForm) && (
+            <div className="flex items-center justify-between rounded-xl border border-amber-400/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2.5">
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                {editingPlanId ? "Editing this plan below — add days, add or remove exercises." : "Building a new plan below."}
+              </p>
+              <button onClick={cancelEdit} className="text-xs font-medium text-amber-700 dark:text-amber-400 underline">
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {formVisible && (
+            <>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">Plan Name</p>
+                <Input value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="e.g. Jenny's Split" className="text-sm" />
+              </div>
 
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-1.5">Goal</p>
@@ -332,7 +458,7 @@ export default function BuildPage() {
                 <div key={dayIndex} className="border border-border rounded-xl p-3 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold">Day {dayIndex + 1}</p>
-                    {days.length > 1 && (
+                    {days.length > 1 && !(editingPlanId && dayIndex < existingDayCount) && (
                       <button
                         onClick={() => removeDay(dayIndex)}
                         className="text-xs text-muted-foreground hover:text-foreground"
@@ -436,15 +562,13 @@ export default function BuildPage() {
                                   </div>
                                 )}
                               </div>
-                              {checked && (
-                                <button
-                                  type="button"
-                                  onClick={() => previewExerciseContent(ex)}
-                                  className="text-xs font-medium text-muted-foreground underline text-left pl-6"
-                                >
-                                  How do I do this?
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => previewExerciseContent(ex, dayIndex, displayedExercises)}
+                                className="text-xs font-medium text-muted-foreground underline text-left pl-6"
+                              >
+                                How do I do this?
+                              </button>
                             </div>
                           );
                         })}
@@ -482,9 +606,11 @@ export default function BuildPage() {
 
           {error && <p className="text-xs text-destructive">{error}</p>}
 
-          <Button onClick={handleSave} disabled={saving} className="w-full rounded-full bg-amber-500 hover:bg-amber-600 text-white">
-            {saving ? "Saving..." : "Save Plan"}
-          </Button>
+              <Button onClick={handleSave} disabled={saving} className="w-full rounded-full bg-amber-500 hover:bg-amber-600 text-white">
+                {saving ? "Saving..." : editingPlanId ? "Save Changes" : "Save Plan"}
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -495,16 +621,47 @@ export default function BuildPage() {
       {previewExercise && (previewExercise.gifUrl || previewExercise.imageUrls?.[0]) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto bg-background rounded-3xl border shadow-md flex flex-col">
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <div className="w-10" />
-              <p className="font-semibold text-sm">How To</p>
+            <div className="px-4 py-3 border-b flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground">How To</p>
+                <p className="font-semibold text-sm truncate">{previewExercise.displayName || previewExercise.name}</p>
+              </div>
               <button
-                onClick={() => setPreviewExercise(null)}
-                className="w-10 text-right text-sm text-muted-foreground"
+                onClick={() => {
+                  setPreviewExercise(null);
+                  setPreviewDayIndex(null);
+                }}
+                className="text-sm text-muted-foreground shrink-0"
               >
                 ✕
               </button>
             </div>
+
+            {/* Add/Next right up top — reachable the instant the modal opens,
+                no scrolling past the gif/instructions/videos required. */}
+            <div className="px-4 pt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  if (previewDayIndex !== null) toggleExercise(previewDayIndex, previewExercise);
+                }}
+                className={`flex-1 text-sm text-center px-4 py-2 rounded-full transition-colors ${
+                  previewIsChecked
+                    ? "border hover:bg-muted"
+                    : "bg-amber-500 hover:bg-amber-600 text-white"
+                }`}
+              >
+                {previewIsChecked ? "Remove from Plan" : "+ Add to Plan"}
+              </button>
+              {previewList.length > 1 && (
+                <button
+                  onClick={nextPreview}
+                  className="flex-1 text-sm text-center px-4 py-2 rounded-full border hover:bg-muted transition-colors"
+                >
+                  Next →
+                </button>
+              )}
+            </div>
+
             <div className="p-4 flex flex-col gap-3">
               <div className="border border-border rounded-xl overflow-hidden">
                 <img
@@ -545,9 +702,12 @@ export default function BuildPage() {
                   </a>
                 );
               })}
-
               <button
-                onClick={() => setPreviewExercise(null)}
+                onClick={() => {
+                  setPreviewExercise(null);
+                  setPreviewDayIndex(null);
+                  setPreviewList([]);
+                }}
                 className="text-sm text-center px-4 py-2 rounded-full border hover:bg-muted transition-colors"
               >
                 Close
@@ -559,3 +719,4 @@ export default function BuildPage() {
     </div>
   );
 }
+
