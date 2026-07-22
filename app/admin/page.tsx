@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { UserButton } from "@clerk/nextjs";
+import { requireAdmin } from "@/lib/auth-roles";
 
 // =============================================================================
 // /admin — Dev reference index. Internal notes-to-self on how each part of the
@@ -40,13 +42,19 @@ const TOPICS = [
   },
 ];
 
-export default function AdminIndexPage() {
+export default async function AdminIndexPage() {
+  await requireAdmin();
   return (
     <div className="min-h-screen bg-background p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-foreground">Dev Reference</h1>
-      <p className="text-sm text-muted-foreground mt-1 mb-8">
-        Internal notes on how each part of Iron Temple works — a reminder for the dev team (me).
-      </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Dev Reference</h1>
+          <p className="text-sm text-muted-foreground mt-1 mb-8">
+            Internal notes on how each part of Iron Temple works — a reminder for the dev team (me).
+          </p>
+        </div>
+        <UserButton />
+      </div>
 
       <div className="flex flex-col gap-3">
         {TOPICS.map((topic) => (

@@ -58,9 +58,19 @@ model CreatorProfile {
 
 // ─── STEP 2: The workout program templates (seeded once, shared by all users) ─
 
+// public = discoverable/followable by anyone (a creator's program for
+// subscribers). personal = the creator's own individual plan — not
+// followable by anyone but them, even with the direct /plan/{id} link (see
+// app/api/follow-plan/route.ts). Only meaningful for creator-built plans;
+// a regular athlete's own custom split has no followers to hide it from.
+enum PlanVisibility {
+  personal
+  public
+}
+
 // A workout program (e.g. "Arnold Split"). One row shared by all users on that plan.
 model WorkoutPlan {
-  id              String       @id @default(uuid())
+  id              String         @id @default(uuid())
   name            String
   // Explicit goal this plan's rep-range math should use (e.g. "Build Muscle"),
   // set directly at creation time instead of inferred from the plan name — needed
@@ -70,8 +80,12 @@ model WorkoutPlan {
   goal            String?
   // Who built this plan — null for the original seeded plans. Needed once plans
   // are publicly discoverable, so a shared plan can show "created by X".
-  createdBy       User?        @relation("PlanCreator", fields: [createdByUserId], references: [id])
+  createdBy       User?          @relation("PlanCreator", fields: [createdByUserId], references: [id])
   createdByUserId String?
+  // Defaults to public so every plan that predates this field (all seeded
+  // plans, everyone's existing custom splits) keeps behaving exactly as
+  // before — nothing existing suddenly becomes hidden or unfollowable.
+  visibility      PlanVisibility @default(public)
   days            WorkoutDay[]
   userHistory     UserPlan[]
 }

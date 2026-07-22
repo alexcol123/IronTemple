@@ -8,8 +8,8 @@ export async function GET(req: NextRequest) {
   if (!phone && !userId) return NextResponse.json({ error: "phone or userId required" }, { status: 400 });
 
   const user = userId
-    ? await prisma.user.findUnique({ where: { id: userId } })
-    : await prisma.user.findUnique({ where: { phone: phone! } });
+    ? await prisma.user.findUnique({ where: { id: userId }, include: { creatorProfile: true } })
+    : await prisma.user.findUnique({ where: { phone: phone! }, include: { creatorProfile: true } });
   if (!user) return NextResponse.json({ user: null });
 
   const userPlan = await prisma.userPlan.findFirst({
@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
       planName: userPlan?.plan.name ?? null,
       goalPlanName,
       tierKey,
+      isCreator: !!user.creatorProfile,
     },
     goals: GOALS,
     tiers: EXPERIENCE_TIERS,

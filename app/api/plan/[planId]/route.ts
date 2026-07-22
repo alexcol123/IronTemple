@@ -26,6 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plan
       id: plan.id,
       name: plan.name,
       goal: plan.goal,
+      visibility: plan.visibility,
       createdByName,
       followerCount,
       createdByUserId: plan.createdByUserId,

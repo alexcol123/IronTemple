@@ -16,7 +16,7 @@ type DayInput = { bodyParts: string[]; exercises: ExerciseInput[] };
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ planId: string }> }) {
   const { planId } = await params;
   const body = await req.json();
-  const { userId, planName, goal, days }: { userId?: string; planName?: string; goal?: string; days?: DayInput[] } = body;
+  const { userId, planName, goal, days, visibility }: { userId?: string; planName?: string; goal?: string; days?: DayInput[]; visibility?: "personal" | "public" } = body;
 
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
   if (!planName?.trim()) return NextResponse.json({ error: "Plan name required" }, { status: 400 });
@@ -34,7 +34,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ pl
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
   if (plan.createdByUserId !== userId) return NextResponse.json({ error: "Only this plan's creator can edit it" }, { status: 403 });
 
-  await prisma.workoutPlan.update({ where: { id: planId }, data: { name: planName.trim(), goal } });
+  await prisma.workoutPlan.update({
+    where: { id: planId },
+    data: { name: planName.trim(), goal, ...(visibility ? { visibility } : {}) },
+  });
 
   for (let i = 0; i < days.length; i++) {
     const incoming = days[i];

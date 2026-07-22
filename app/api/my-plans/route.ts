@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
       id: p.id,
       name: p.name,
       goal: p.goal,
+      visibility: p.visibility,
       isActive: p.id === activeUserPlan?.planId,
     })),
   });

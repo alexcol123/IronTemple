@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireAdmin } from "@/lib/auth-roles";
 
 // =============================================================================
 // /admin/progression — Dev reference: how weight-increase suggestions and PR
@@ -28,7 +29,8 @@ const ExampleBox = ({ title, children }: { title: string; children: React.ReactN
   </div>
 );
 
-export default function ProgressionPage() {
+export default async function ProgressionPage() {
+  await requireAdmin();
   return (
     <div className="min-h-screen bg-background p-6 max-w-3xl mx-auto">
       <Link href="/admin" className="text-xs text-muted-foreground hover:underline">

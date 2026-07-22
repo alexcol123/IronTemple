@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSignedInRole } from "@/lib/auth-roles";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const role = await getSignedInRole();
+  if (role.role !== "admin") return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+
   const { id } = await params;
   const body = await req.json();
   const { gifUrl, instructions, videoUrls, imageUrls, featured, displayName }: {
@@ -39,6 +43,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const role = await getSignedInRole();
+  if (role.role !== "admin") return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+
   const { id } = await params;
 
   const existing = await prisma.exerciseLibrary.findUnique({ where: { id } });

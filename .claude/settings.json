@@ -18,7 +18,12 @@
       "WebSearch",
       "Bash(curl -s \"https://oss.exercisedb.dev/api/v1/exercises/bodyparts?bodyParts=chest&limit=500\")",
       "Bash(curl -s -i \"https://oss.exercisedb.dev/api/v1/exercises/search?search=smith%20bench%20press\")",
-      "Bash(npx tsx *)"
+      "Bash(npx tsx *)",
+      "Bash(xargs kill -9)",
+      "Bash(nohup npm run dev)",
+      "Bash(disown)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} -> %{redirect_url}\\\\n\" http://localhost:3000/influencer/me)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/history/27792e38-b047-4dff-afa3-6856121f987c)"
     ]
   }
 }

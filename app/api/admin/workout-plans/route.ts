@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { GOALS, EXPERIENCE_TIERS } from "@/lib/sms-engine";
+import { getSignedInRole } from "@/lib/auth-roles";
 
 // Lists the 12 real seeded plans (Beginner/Intermediate/Advanced x each goal),
 // grouped by goal, for the admin dashboard to review before live testing.
+// Admin-only, same as the page — this route lives outside /admin's path so
+// Clerk's proxy.ts middleware never sees it on its own.
 export async function GET() {
+  const role = await getSignedInRole();
+  if (role.role !== "admin") return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+
   const plans = await prisma.workoutPlan.findMany({
     where: { createdByUserId: null },
     include: {

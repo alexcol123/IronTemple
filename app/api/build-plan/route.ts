@@ -7,7 +7,7 @@ type DayInput = { bodyParts: string[]; exercises: ExerciseInput[] };
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { userId, planName, goal, days }: { userId?: string; planName?: string; goal?: string; days?: DayInput[] } = body;
+  const { userId, planName, goal, days, visibility }: { userId?: string; planName?: string; goal?: string; days?: DayInput[]; visibility?: "personal" | "public" } = body;
 
   if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 });
   if (!planName?.trim()) return NextResponse.json({ error: "Plan name required" }, { status: 400 });
@@ -55,12 +55,21 @@ export async function POST(req: NextRequest) {
       name: planName.trim(),
       goal,
       createdByUserId: userId,
+      visibility: visibility === "personal" ? "personal" : "public",
       days: { create: dayData },
     },
   });
 
-  await prisma.userPlan.updateMany({ where: { userId, endDate: null }, data: { endDate: new Date() } });
-  await prisma.userPlan.create({ data: { userId, planId: plan.id } });
+  // Only auto-follow if this is someone's very first plan ever — preserves
+  // the normal athlete flow (build your first split, immediately start on
+  // it) without forcing every subsequent plan a creator builds to also
+  // hijack whatever they're personally training on. A creator who wants to
+  // actually train on a plan they authored follows it explicitly via that
+  // plan's public /plan/{planId} page, same as any subscriber would.
+  const alreadyFollowingSomething = await prisma.userPlan.findFirst({ where: { userId, endDate: null } });
+  if (!alreadyFollowingSomething) {
+    await prisma.userPlan.create({ data: { userId, planId: plan.id } });
+  }
 
   return NextResponse.json({ plan: { id: plan.id, name: plan.name } });
 }

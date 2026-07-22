@@ -1,5 +1,42 @@
 @AGENTS.md
 
+# Status — What's Built vs. What's Left
+
+*Last updated 2026-07-22. Everything below the "Feature Backlog" heading further down still has the full per-item reasoning — this section is just the map.*
+
+## Built and working
+
+**Core (SMS + web logging)**
+- Chat-based workout logger via SMS — `HERE` to start, weight×reps logging, `ADD`/`REMOVE`/`SKIP`/`BUSY` commands
+- Real exercise library (1,339 exercises, admin-curated `featured` set) with gifs/instructions/videos
+- Full custom workout builder (`/build`) — create/edit plans, drag-order exercises, per-exercise sets/reps
+- Weekly Progress report, driven by starred favorites (`/prs`) with a curated fallback and a hero-exercise spotlight
+- Bonus workout sessions + explicit session-completion tracking (6hr staleness auto-close)
+- Private link-based pages for every athlete — `/today`, `/history`, `/prs`, `/progress`, `/menu`, `/profile`, `/exercises`, `/how-it-works`, `/commands` — no login required, by design; the UUID itself is the access control, same trust model as a texted magic link
+
+**Creator / Influencer system**
+- `CreatorProfile` model — legal name, stage name (public display), bio, socials, intro video
+- Admin-driven creator onboarding (`/influencer/onboarding`) + a full creators list (`/influencer/creators`)
+- Public creator profile surfaced on a plan's public page (`/plan/{planId}`)
+- Real authentication via Clerk (phone OTP, no passwords) — gates `/admin` and `/influencer`; every athlete link stays open/ungated on purpose
+- Role system: an `ADMIN_PHONES` env var plus phone-matched `CreatorProfile` lookup — no separate Clerk-role system, since the whole app's identity model is already phone-keyed
+- A creator's own restricted hub (`/influencer/me`, `/influencer/me/profile`) — locked to their own verified phone, can't view or edit anyone else's
+- Personal ⇄ Business toggle in the shared nav bar, with business-side tabs (Profile/Workout) replacing the personal ones (History/PRs/Menu) when it's showing
+- "Building a plan" and "following a plan" are decoupled — creating a new plan no longer auto-switches what a creator is personally training on; explicit Follow (the same flow a subscriber uses) is the only way to start training on a plan you authored
+- Plan visibility (`personal` vs. `public`) — a personal plan can't be discovered or followed by anyone but its creator, even with the direct link
+
+## What's left (roughly in dependency order)
+
+1. **Stripe subscription billing** — trials, recurring $15/mo charges, the 50/50 split. Nothing downstream of payment can go live without this.
+2. **Recruiter/creator code system** (`JOINLARRY` → subscribe flow → attribution) — depends on Stripe existing first.
+3. **Scoped plan recommendations within one creator's own plans** (e.g. recommending Larry's 5-day split vs. his 3-day split to a new subscriber) — depends on the recruiter code system above.
+4. **Proactive weekly SMS send** (Sunday evening, exact time TBD) — and gating `/progress` behind it instead of always-on-demand.
+5. **Creator-facing Subscribers list + Messaging/broadcast** — both shown as "Coming soon" on `/influencer/me` today, no real page behind either yet.
+6. **Move exercise media off `public/`** to Supabase Storage — flagged explicitly so the git bloat doesn't quietly become permanent.
+7. Smaller, real-usage-gated items (each has a "do not build until" condition in the Feature Backlog below): per-creator exercise demo overrides, optional public username for the history link, plate calculator + equipment type, post-workout energy rating, pre-gym behavioral reminder, macro logging, equipment-aware filtering, AI coach features.
+
+---
+
 # NexText — Platform Vision
 
 ## The Name
@@ -178,6 +215,8 @@ The pitch requires Stripe recurring billing before you can demo it live:
 The real version should feel like a school report card: locked until it's actually ready, not a page you can just go check whenever. Two ways to gate it were considered — a fixed time-based unlock (e.g. always unlocks Sunday evening) vs. tying the unlock to a real per-week "generated/sent" event. **Went with the second**: gate on a per-week generated/sent flag or timestamp, not just a fixed day/time, so the web page and the future proactive weekly SMS send are pinned to the same real event instead of two clocks that can drift apart.
 
 **What it needs:** a way to record, per user per week, that the report has been "released" (e.g. a timestamp set the moment the weekly SMS goes out, or a scheduled job that flips it at week's end) — the page then checks that flag before rendering this week's recap instead of always computing and showing it live.
+
+**Target send time:** Sunday evening (exact time TBD) — a proactive SMS with the link to that week's Weekly Progress report, timed for the natural "week wrapping up" moment rather than a random weekday. This is also why Weekly Progress isn't a persistent tab in the app's own nav (see `components/read-nav.tsx`) — the SMS link is meant to be the primary way in, not app browsing.
 
 **Do NOT build until:** the proactive weekly/monthly SMS send itself exists — the gate is meant to hang off that real send event, not an arbitrary timer invented just to lock the page.
 

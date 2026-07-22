@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-type MyPlan = { id: string; name: string; goal: string | null; isActive: boolean };
+type MyPlan = { id: string; name: string; goal: string | null; visibility: "personal" | "public"; isActive: boolean };
 
 // Matches the real /api/exercise-library response — not the old static
 // body-parts.ts Exercise type, which is now only used by the seeded goal plan
@@ -50,12 +50,30 @@ type DayBuild = {
 export default function BuildPage() {
   const { userId } = useParams<{ userId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [planName, setPlanName] = useState("");
   const [goal, setGoal] = useState("");
   const [days, setDays] = useState<DayBuild[]>([{ bodyParts: [], selectedExercises: [] }]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [isCreator, setIsCreator] = useState(false);
+  // Only meaningful for creators — a regular athlete's own split has no
+  // followers to hide it from. Defaults based on which menu linked here:
+  // /influencer/me's "My Workout" appends ?from=business (default Public,
+  // they're likely building for subscribers); /menu's "Build Your Workout"
+  // has no hint (default Personal). Either way it's editable per-plan below.
+  const [visibility, setVisibility] = useState<"personal" | "public">(
+    searchParams.get("from") === "business" ? "public" : "personal",
+  );
+
+  useEffect(() => {
+    if (!userId) return;
+    fetch(`/api/profile?userId=${userId}`)
+      .then((r) => r.json())
+      .then((data) => setIsCreator(!!data.user?.isCreator));
+  }, [userId]);
 
   const [myPlans, setMyPlans] = useState<MyPlan[]>([]);
   const [myPlansLoaded, setMyPlansLoaded] = useState(false);
@@ -201,6 +219,7 @@ export default function BuildPage() {
     setExistingDayCount(loadedDays.length);
     setPlanName(plan.name);
     setGoal(plan.goal ?? "");
+    setVisibility(plan.visibility ?? "public");
     setDays(loadedDays);
     setCustomSets(sets);
     setCustomReps(reps);
@@ -212,6 +231,7 @@ export default function BuildPage() {
     setShowCreateForm(false);
     setPlanName("");
     setGoal("");
+    setVisibility(searchParams.get("from") === "business" ? "public" : "personal");
     setDays([{ bodyParts: [], selectedExercises: [] }]);
     setCustomSets({});
     setCustomReps({});
@@ -276,6 +296,9 @@ export default function BuildPage() {
       userId,
       planName: planName.trim(),
       goal,
+      // Non-creators never see the toggle, so this always stays "public" for
+      // them — harmless, since they have no followers to hide it from anyway.
+      visibility: isCreator ? visibility : "public",
       days: days.map((day) => {
         const available = exercisesForBodyParts(day.bodyParts);
         return {
@@ -327,10 +350,18 @@ export default function BuildPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-lg mx-auto p-6 pb-16">
-        {/* Back link */}
-        <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground hover:text-foreground mb-3 inline-block">
-          ← Menu
-        </Link>
+        {/* Back link — goes back to wherever this page was actually entered
+            from (see the ?from=business hint from /influencer/me and other
+            business-side links), not always the athlete menu. */}
+        {searchParams.get("from") === "business" ? (
+          <Link href="/influencer/me" className="text-xs text-muted-foreground hover:text-foreground mb-3 inline-block">
+            ← Creator Home
+          </Link>
+        ) : (
+          <Link href={`/menu/${userId}`} className="text-xs text-muted-foreground hover:text-foreground mb-3 inline-block">
+            ← Menu
+          </Link>
+        )}
 
         {/* Nameplate */}
         <div className="flex items-baseline justify-between pb-4 mb-6 border-b-2 border-border">
@@ -353,12 +384,25 @@ export default function BuildPage() {
                     className="flex items-center justify-between text-sm px-3 py-2 rounded-xl border border-border"
                   >
                     <div>
-                      <p className="font-medium">{p.name}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium">{p.name}</p>
+                        {isCreator && (
+                          <span
+                            className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                              p.visibility === "personal"
+                                ? "bg-muted text-muted-foreground"
+                                : "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400"
+                            }`}
+                          >
+                            {p.visibility === "personal" ? "Personal" : "Public"}
+                          </span>
+                        )}
+                      </div>
                       {p.goal && <p className="text-xs text-muted-foreground">{p.goal}</p>}
                     </div>
                     <div className="flex items-center gap-2">
                       <Link
-                        href={`/plan/${p.id}?userId=${userId}`}
+                        href={`/plan/${p.id}?userId=${userId}${searchParams.get("from") === "business" ? "&from=business" : ""}`}
                         target="_blank"
                         className="text-xs px-2.5 py-1 rounded-full border hover:bg-muted transition-colors"
                       >
@@ -414,6 +458,35 @@ export default function BuildPage() {
                 <p className="text-xs font-medium text-muted-foreground mb-1.5">Plan Name</p>
                 <Input value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="e.g. Jenny's Split" className="text-sm" />
               </div>
+
+              {isCreator && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1.5">Visibility</p>
+                  <div className="flex rounded-xl overflow-hidden border border-border text-sm">
+                    <button
+                      onClick={() => setVisibility("personal")}
+                      className={`flex-1 text-center px-3 py-2 transition-colors ${
+                        visibility === "personal" ? "bg-amber-500 text-white" : "text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      Personal
+                    </button>
+                    <button
+                      onClick={() => setVisibility("public")}
+                      className={`flex-1 text-center px-3 py-2 transition-colors ${
+                        visibility === "public" ? "bg-amber-500 text-white" : "text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      Public
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {visibility === "personal"
+                      ? "Just for you — not followable by anyone else, even with the link."
+                      : "Followers can find and follow this program."}
+                  </p>
+                </div>
+              )}
 
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-1.5">Goal</p>

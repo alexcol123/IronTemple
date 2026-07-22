@@ -16,6 +16,12 @@ export async function POST(req: NextRequest) {
   const plan = await prisma.workoutPlan.findUnique({ where: { id: planId } });
   if (!plan) return NextResponse.json({ error: "Plan not found." }, { status: 404 });
 
+  // A personal plan is the creator's own individual program — not
+  // followable by anyone else, even with the direct link.
+  if (plan.visibility === "personal" && plan.createdByUserId !== user.id) {
+    return NextResponse.json({ error: "This plan isn't available to follow." }, { status: 403 });
+  }
+
   // Same switch mechanism as building a new plan — end whatever's currently
   // active, start a new UserPlan pointing at this existing plan instead of a
   // freshly created one. No payment gate yet — that's a deliberate deferral,

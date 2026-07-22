@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSignedInRole } from "@/lib/auth-roles";
 
 export async function POST(req: NextRequest) {
+  const role = await getSignedInRole();
+  if (role.role !== "admin") return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+
   const body = await req.json();
   const { name, bodyPart, type, defaultSets, defaultReps, featured }: {
     name?: string;

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ReadNav } from "@/components/read-nav";
@@ -21,8 +22,32 @@ const ITEMS = [
   { label: "Influencer", desc: "Creator tools — onboarding, profile setup", path: "influencer", static: true },
 ];
 
+// Shown instead of Admin/Influencer when this userId belongs to a creator —
+// those two links are for managing every creator, not relevant to viewing
+// your own account. Everything else in ITEMS (workout, progress, PRs, etc.)
+// still applies since a creator trains on their own plan too, same as any
+// athlete — see app/api/build-plan/route.ts, which gives them a real
+// UserPlan the moment they build their plan.
+const CREATOR_HOME_ITEM = {
+  label: "Creator Home",
+  desc: "Your profile, workout, and (soon) subscribers",
+  path: "influencer/me",
+  static: true,
+};
+
 export default function MenuPage() {
   const { userId } = useParams<{ userId: string }>();
+  const [isCreator, setIsCreator] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/profile?userId=${userId}`)
+      .then((r) => r.json())
+      .then((data) => setIsCreator(!!data.user?.isCreator));
+  }, [userId]);
+
+  const items = isCreator
+    ? [...ITEMS.filter((item) => item.path !== "admin" && item.path !== "influencer"), CREATOR_HOME_ITEM]
+    : ITEMS;
 
   return (
     <div className="min-h-screen bg-background">
@@ -36,7 +61,7 @@ export default function MenuPage() {
 
         {/* Menu items */}
         <div className="flex flex-col gap-2">
-          {ITEMS.map((item) => (
+          {items.map((item) => (
             <Link
               key={item.path}
               href={item.static ? `/${item.path}` : `/${item.path}/${userId}`}

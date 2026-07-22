@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSignedInRole, normalizePhone } from "@/lib/auth-roles";
 
 // Creator onboarding — creates the User if this phone hasn't signed up yet
 // (mirrors what JOIN does for a normal athlete, minus the goal/plan step,
 // since a creator builds their own plan via /build afterward), then
 // upserts their CreatorProfile. Prototype stage: no payment, no recruiter
 // attribution — just enough to make a creator's public plan page real.
+//
+// This route sits outside /admin and /influencer, so Clerk's proxy.ts
+// middleware never sees it — the page-level gating on those routes means
+// nothing if this endpoint stays open, so role checks are repeated here.
+// Admin can read/write any phone; a creator can only read/write their own.
 
 export async function GET(req: NextRequest) {
   const phone = req.nextUrl.searchParams.get("phone");
   if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
+
+  const role = await getSignedInRole();
+  if (role.role === "none") return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+  if (role.role === "creator" && normalizePhone(role.phone) !== normalizePhone(phone)) {
+    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
 
   const user = await prisma.user.findUnique({ where: { phone }, include: { creatorProfile: true } });
   if (!user) return NextResponse.json({ found: false });
@@ -60,6 +72,12 @@ export async function POST(req: NextRequest) {
   if (!phone?.trim()) return NextResponse.json({ error: "Phone number is required" }, { status: 400 });
   if (!firstName?.trim()) return NextResponse.json({ error: "First name is required" }, { status: 400 });
   if (!lastName?.trim()) return NextResponse.json({ error: "Last name is required" }, { status: 400 });
+
+  const role = await getSignedInRole();
+  if (role.role === "none") return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+  if (role.role === "creator" && normalizePhone(role.phone) !== normalizePhone(phone)) {
+    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
 
   const legalName = `${firstName.trim()} ${lastName.trim()}`;
 

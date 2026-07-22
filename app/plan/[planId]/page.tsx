@@ -12,6 +12,7 @@ type Plan = {
   id: string;
   name: string;
   goal: string | null;
+  visibility: "personal" | "public";
   createdByName: string | null;
   followerCount: number;
   days: Day[];
@@ -42,7 +43,7 @@ export default function PublicPlanPage() {
   const { planId } = useParams<{ planId: string }>();
   const searchParams = useSearchParams();
   const viewerUserId = searchParams.get("userId");
-  const backHref = viewerUserId ? `/menu/${viewerUserId}` : "/";
+  const backHref = searchParams.get("from") === "business" ? "/influencer/me" : viewerUserId ? `/menu/${viewerUserId}` : "/";
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [phone, setPhone] = useState("");
@@ -189,17 +190,20 @@ export default function PublicPlanPage() {
           ))}
         </div>
 
-        {/* Follow */}
-        <div className="mt-6 pt-5 border-t-2 border-border flex flex-col gap-2">
-          <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Follow this plan</p>
-          <div className="flex gap-2">
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+15550001234" className="text-sm" />
-            <Button size="sm" onClick={handleFollow} disabled={following} className="bg-amber-500 hover:bg-amber-600 text-white">
-              {following ? "..." : "Follow"}
-            </Button>
+        {/* Follow — hidden entirely for a personal plan, which isn't meant
+            for anyone but its creator (see app/api/follow-plan/route.ts). */}
+        {plan.visibility === "public" && (
+          <div className="mt-6 pt-5 border-t-2 border-border flex flex-col gap-2">
+            <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Follow this plan</p>
+            <div className="flex gap-2">
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+15550001234" className="text-sm" />
+              <Button size="sm" onClick={handleFollow} disabled={following} className="bg-amber-500 hover:bg-amber-600 text-white">
+                {following ? "..." : "Follow"}
+              </Button>
+            </div>
+            {message && <p className="text-xs text-muted-foreground">{message}</p>}
           </div>
-          {message && <p className="text-xs text-muted-foreground">{message}</p>}
-        </div>
+        )}
       </div>
     </div>
   );
