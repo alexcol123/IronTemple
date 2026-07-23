@@ -13,7 +13,6 @@ import Link from "next/link";
 // invite per creator, since the DM is what gates who gets sent this page in
 // the first place (see CLAUDE.md).
 
-const JOIN_NUMBER_DISPLAY = "(804) 977-0090";
 const JOIN_SMS_HREF = "sms:+18049770090&body=JOIN";
 
 const FEATURES = [
@@ -82,16 +81,16 @@ export default function HomeClient() {
           Turn your Instagram into recurring income. Your fans text a number, get your exact program, and pay you
           every month — automatically.
         </p>
-        <div className="mt-8 flex flex-col items-center gap-2">
-          <a
-            href={JOIN_SMS_HREF}
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <Link
+            href="/influencer/join"
             className="inline-flex items-center justify-center px-6 py-3 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition-colors"
           >
-            See It In Action — Text JOIN
+            Start Earning →
+          </Link>
+          <a href={JOIN_SMS_HREF} className="text-xs text-muted-foreground hover:text-foreground underline transition-colors">
+            Want to see it work first? Text JOIN to try it as a member.
           </a>
-          <p className="text-xs text-muted-foreground">
-            Text JOIN to {JOIN_NUMBER_DISPLAY} to try a program yourself, no signup required.
-          </p>
         </div>
       </div>
 
