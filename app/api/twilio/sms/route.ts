@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/app/generated/prisma/client";
 import { handleMessage, State } from "@/lib/sms-engine";
 
 function twiml(message: string) {
@@ -23,10 +24,11 @@ export async function POST(req: NextRequest) {
 
   const result = await handleMessage(from, text, state, context);
 
+  const nextContext = (result.context ?? {}) as Prisma.InputJsonValue;
   await prisma.smsState.upsert({
     where: { phone: from },
-    create: { phone: from, state: result.nextState, context: result.context ?? {} },
-    update: { state: result.nextState, context: result.context ?? {} },
+    create: { phone: from, state: result.nextState, context: nextContext },
+    update: { state: result.nextState, context: nextContext },
   });
 
   return new NextResponse(twiml(result.reply), { headers: { "Content-Type": "text/xml" } });
