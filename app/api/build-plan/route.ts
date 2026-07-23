@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { GOALS } from "@/lib/sms-engine";
+import { MAX_PUBLIC_PLANS } from "@/lib/plan-visibility";
 
 type ExerciseInput = { name: string; sets: number; reps: number; type?: "weighted" | "cardio" | "bodyweight" };
 type DayInput = { bodyParts: string[]; exercises: ExerciseInput[] };
@@ -20,6 +21,17 @@ export async function POST(req: NextRequest) {
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  const wantsPublic = visibility !== "personal";
+  if (wantsPublic) {
+    const publicCount = await prisma.workoutPlan.count({ where: { createdByUserId: userId, visibility: "public" } });
+    if (publicCount >= MAX_PUBLIC_PLANS) {
+      return NextResponse.json(
+        { error: `You already have ${MAX_PUBLIC_PLANS} public plans — make one personal first.` },
+        { status: 409 },
+      );
+    }
+  }
 
   // One WorkoutPlan, created on the spot for this user — not seeded. The explicit
   // `goal` field means this plan's rep-range math works correctly regardless of

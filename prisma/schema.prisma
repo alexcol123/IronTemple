@@ -46,6 +46,13 @@ model CreatorProfile {
   // name appears publicly (plan page, previews) instead of their legal name.
   // Falls back to firstName, then to User.name, if not set.
   stageName     String?
+  // The word after JOIN that routes a new text straight to this creator's
+  // plan, skipping the generic goal/experience interview (e.g. joinCode
+  // "LARRY25" means texting "JOINLARRY25" joins Larry specifically). Stored
+  // normalized (letters/digits only, uppercase) — see lib/join-code.ts —
+  // since the SMS parser does exact-string matching on the trimmed,
+  // uppercased message body.
+  joinCode      String?  @unique
   photoUrl      String?
   bio           String?
   instagramUrl  String?

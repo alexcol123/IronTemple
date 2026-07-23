@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 
 type Exercise = { name: string; targetSets: number; targetReps: number; type: string };
 type Day = { day: number; name: string; muscles: string; exercises: Exercise[] };
+type OtherPlan = { id: string; name: string; dayCount: number };
 type Plan = {
   id: string;
   name: string;
@@ -15,6 +16,7 @@ type Plan = {
   visibility: "personal" | "public";
   createdByName: string | null;
   followerCount: number;
+  otherPlans: OtherPlan[];
   days: Day[];
   creatorPhotoUrl: string | null;
   creatorBio: string | null;
@@ -49,6 +51,7 @@ export default function PublicPlanPage() {
   const [phone, setPhone] = useState("");
   const [following, setFollowing] = useState(false);
   const [message, setMessage] = useState("");
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!planId) { setLoading(false); return; }
@@ -70,6 +73,26 @@ export default function PublicPlanPage() {
     const data = await res.json();
     setFollowing(false);
     setMessage(res.ok ? `You're now following this plan, ${data.name}! Text HERE to start.` : data.error ?? "Something went wrong.");
+  }
+
+  // Switching to a sibling plan by the same creator — one click if we already
+  // know who's viewing (came from their own menu/build), otherwise falls
+  // back to whatever phone number they've typed into the Follow box above.
+  async function handleSwitchTo(targetPlanId: string) {
+    setMessage("");
+    if (!viewerUserId && !phone.trim()) {
+      setMessage("Enter your phone number below first, then try switching again.");
+      return;
+    }
+    setSwitchingId(targetPlanId);
+    const res = await fetch("/api/follow-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(viewerUserId ? { userId: viewerUserId, planId: targetPlanId } : { phone: phone.trim(), planId: targetPlanId }),
+    });
+    const data = await res.json();
+    setSwitchingId(null);
+    setMessage(res.ok ? `You're now following ${data.name}'s new program! Text HERE to start.` : data.error ?? "Something went wrong.");
   }
 
   if (loading)
@@ -189,6 +212,35 @@ export default function PublicPlanPage() {
             </div>
           ))}
         </div>
+
+        {/* Other programs by the same creator — lets a subscriber discover
+            and one-click switch to a sibling plan (e.g. a 3-day vs. 5-day
+            version) without already knowing its link. */}
+        {plan.otherPlans.length > 0 && (
+          <div className="mt-6 pt-5 border-t-2 border-border flex flex-col gap-2">
+            <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">
+              Other programs by {plan.createdByName}
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {plan.otherPlans.map((other) => (
+                <div key={other.id} className="flex items-center justify-between text-sm px-3 py-2 rounded-xl border border-border">
+                  <div>
+                    <p className="font-medium">{other.name}</p>
+                    <p className="text-xs text-muted-foreground">{other.dayCount} days/week</p>
+                  </div>
+                  <button
+                    onClick={() => handleSwitchTo(other.id)}
+                    disabled={switchingId === other.id}
+                    className="text-xs px-2.5 py-1 rounded-full border hover:bg-muted transition-colors shrink-0"
+                  >
+                    {switchingId === other.id ? "..." : "Switch to this"}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {message && <p className="text-xs text-muted-foreground">{message}</p>}
+          </div>
+        )}
 
         {/* Follow — hidden entirely for a personal plan, which isn't meant
             for anyone but its creator (see app/api/follow-plan/route.ts). */}

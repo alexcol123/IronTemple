@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSignedInRole, normalizePhone } from "@/lib/auth-roles";
+import { normalizeJoinCode } from "@/lib/join-code";
 
 // Creator onboarding — creates the User if this phone hasn't signed up yet
 // (mirrors what JOIN does for a normal athlete, minus the goal/plan step,
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest) {
     firstName: user.creatorProfile?.firstName ?? "",
     lastName: user.creatorProfile?.lastName ?? "",
     stageName: user.creatorProfile?.stageName ?? "",
+    joinCode: user.creatorProfile?.joinCode ?? "",
     photoUrl: user.creatorProfile?.photoUrl ?? "",
     bio: user.creatorProfile?.bio ?? "",
     instagramUrl: user.creatorProfile?.instagramUrl ?? "",
@@ -50,6 +52,7 @@ export async function POST(req: NextRequest) {
     firstName,
     lastName,
     stageName,
+    joinCode,
     photoUrl,
     bio,
     instagramUrl,
@@ -61,6 +64,7 @@ export async function POST(req: NextRequest) {
     firstName?: string;
     lastName?: string;
     stageName?: string;
+    joinCode?: string;
     photoUrl?: string;
     bio?: string;
     instagramUrl?: string;
@@ -80,8 +84,17 @@ export async function POST(req: NextRequest) {
   }
 
   const legalName = `${firstName.trim()} ${lastName.trim()}`;
+  const normalizedJoinCode = joinCode?.trim() ? normalizeJoinCode(joinCode) : null;
 
   let user = await prisma.user.findUnique({ where: { phone: phone.trim() } });
+
+  if (normalizedJoinCode) {
+    const codeOwner = await prisma.creatorProfile.findUnique({ where: { joinCode: normalizedJoinCode } });
+    if (codeOwner && codeOwner.userId !== user?.id) {
+      return NextResponse.json({ error: "That join code is already taken." }, { status: 409 });
+    }
+  }
+
   if (user) {
     user = await prisma.user.update({ where: { id: user.id }, data: { name: legalName } });
   } else {
@@ -92,6 +105,7 @@ export async function POST(req: NextRequest) {
     firstName: firstName.trim(),
     lastName: lastName.trim(),
     stageName: stageName?.trim() || null,
+    joinCode: normalizedJoinCode,
     photoUrl: photoUrl?.trim() || null,
     bio: bio?.trim() || null,
     instagramUrl: instagramUrl?.trim() || null,
@@ -100,11 +114,18 @@ export async function POST(req: NextRequest) {
     introVideoUrl: introVideoUrl?.trim() || null,
   };
 
-  await prisma.creatorProfile.upsert({
-    where: { userId: user.id },
-    update: profileData,
-    create: { userId: user.id, ...profileData },
-  });
+  try {
+    await prisma.creatorProfile.upsert({
+      where: { userId: user.id },
+      update: profileData,
+      create: { userId: user.id, ...profileData },
+    });
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "code" in err && err.code === "P2002") {
+      return NextResponse.json({ error: "That join code is already taken." }, { status: 409 });
+    }
+    throw err;
+  }
 
   return NextResponse.json({ userId: user.id, name: user.name, phone: user.phone });
 }

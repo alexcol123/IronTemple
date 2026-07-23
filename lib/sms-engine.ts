@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { normalizeJoinCode } from "@/lib/join-code";
 
 // Monday of the current real-world week, 00:00 — the anchor for "sessions this week"
 export function getMondayOfThisWeek(): Date {
@@ -11,7 +12,7 @@ export function getMondayOfThisWeek(): Date {
   return monday;
 }
 
-export const STATES = ["idle", "onboarding_name", "onboarding_goal", "onboarding_experience", "changing_plan", "choosing_channel", "workout_ready", "exercise_active", "bonus_day_choice"] as const;
+export const STATES = ["idle", "onboarding_name", "onboarding_goal", "onboarding_experience", "join_creator_plan_choice", "join_creator_name", "changing_plan", "choosing_channel", "workout_ready", "exercise_active", "bonus_day_choice"] as const;
 export type State = typeof STATES[number];
 
 export const GOALS = [
@@ -473,6 +474,72 @@ export async function handleMessage(
       return { reply: "Welcome to Iron Temple! What's your name?", nextState: "onboarding_name" };
     }
 
+    // A creator's join code — e.g. "JOINLARRYWHEELS" ("JOIN" + a joinCode from
+    // CreatorProfile). Checked separately from bare "JOIN" above since this
+    // skips the goal/experience interview entirely — the plan isn't a
+    // mystery, it's the creator's. Routes an existing member straight to a
+    // plan switch instead of the generic "already signed up" reply.
+    if (input.startsWith("JOIN") && input.length > 4) {
+      const code = normalizeJoinCode(input.slice(4));
+      const creatorProfile = await prisma.creatorProfile.findUnique({ where: { joinCode: code } });
+      if (!creatorProfile) {
+        return {
+          reply: "We couldn't find a program under that code — double-check the exact spelling and try again.",
+          nextState: "idle",
+        };
+      }
+
+      const creatorUser = await prisma.user.findUnique({ where: { id: creatorProfile.userId } });
+      // Stage name is the public-facing identity (schema.prisma: "appears
+      // publicly... instead of their legal name") — falls back to the
+      // account name only if a creator hasn't set one.
+      const creatorDisplayName = creatorProfile.stageName || creatorUser?.name;
+      const publicPlans = await prisma.workoutPlan.findMany({
+        where: { createdByUserId: creatorProfile.userId, visibility: "public" },
+        include: { days: true },
+      });
+
+      if (publicPlans.length === 0) {
+        return {
+          reply: `${creatorDisplayName ?? "This creator"} doesn't have an active program right now — check back soon.`,
+          nextState: "idle",
+        };
+      }
+
+      const existingMember = await prisma.user.findUnique({ where: { phone } });
+
+      // Only one program — skip straight to it, no choice needed.
+      if (publicPlans.length === 1) {
+        const plan = publicPlans[0];
+        if (existingMember) {
+          await prisma.userPlan.updateMany({ where: { userId: existingMember.id, endDate: null }, data: { endDate: new Date() } });
+          await prisma.userPlan.create({ data: { userId: existingMember.id, planId: plan.id } });
+          return {
+            reply: `You're now following ${creatorDisplayName}'s program: ${plan.name}. Type HERE to start today's workout.`,
+            nextState: "idle",
+          };
+        }
+        return {
+          reply: `You're joining ${creatorDisplayName}'s program! What's your name?`,
+          nextState: "join_creator_name",
+          context: { targetPlanId: plan.id, creatorName: creatorDisplayName },
+        };
+      }
+
+      // Multiple public programs — ask which one, same "reply with a number"
+      // pattern as the goal/experience-tier pickers.
+      const list = publicPlans.map((p, i) => `${i + 1}. ${p.name} - ${p.days.length} days/week`).join("\n");
+      return {
+        reply: `You're joining ${creatorDisplayName}! Pick a program:\n\n${list}\n\nReply with just the number (e.g. 1).`,
+        nextState: "join_creator_plan_choice",
+        context: {
+          creatorName: creatorDisplayName,
+          planOptions: publicPlans.map((p) => ({ id: p.id, name: p.name })),
+          existingUserId: existingMember?.id ?? null,
+        },
+      };
+    }
+
     if (input === "HERE") {
       const user = await prisma.user.findUnique({
         where: { phone },
@@ -666,6 +733,58 @@ export async function handleMessage(
     });
     return {
       reply: `You're all set, ${name}! You're on ${plan.name} - ${tier.days}.\n\nSave this number as 'Iron Temple Coach' so you always know it's us.\n\nType HERE when you're at the gym to start.`,
+      nextState: "idle",
+      context: { userId: user.id },
+    };
+  }
+
+  // Joining a creator's program — pick which of their public plans, if they
+  // have more than one (skipped entirely when there's only one — see the
+  // JOIN-code check above).
+  if (state === "join_creator_plan_choice") {
+    const choice = parseInt(input);
+    const { creatorName, planOptions, existingUserId } = context as {
+      creatorName: string;
+      planOptions: { id: string; name: string }[];
+      existingUserId: string | null;
+    };
+    if (!choice || choice < 1 || choice > planOptions.length) {
+      return { reply: `Pick a number between 1 and ${planOptions.length}.`, nextState: "join_creator_plan_choice", context };
+    }
+    const chosen = planOptions[choice - 1];
+
+    // Existing member switching plans — no name needed, just switch them.
+    if (existingUserId) {
+      await prisma.userPlan.updateMany({ where: { userId: existingUserId, endDate: null }, data: { endDate: new Date() } });
+      await prisma.userPlan.create({ data: { userId: existingUserId, planId: chosen.id } });
+      return {
+        reply: `You're now following ${creatorName}'s program: ${chosen.name}. Type HERE to start today's workout.`,
+        nextState: "idle",
+      };
+    }
+
+    return {
+      reply: "Nice! What's your name?",
+      nextState: "join_creator_name",
+      context: { targetPlanId: chosen.id, creatorName, planName: chosen.name },
+    };
+  }
+
+  // Joining a creator's program — brand new member, plan already decided
+  // (either their only public plan, or whichever they just picked above), so
+  // this skips the goal/experience interview entirely.
+  if (state === "join_creator_name") {
+    const name = text.trim();
+    const { targetPlanId, creatorName, planName } = context as { targetPlanId: string; creatorName: string; planName?: string };
+
+    const plan = await prisma.workoutPlan.findUnique({ where: { id: targetPlanId } });
+    if (!plan) return { reply: "Something went wrong setting up your program. Text JOIN to try again.", nextState: "idle" };
+
+    const user = await prisma.user.create({
+      data: { name, phone, planHistory: { create: { planId: plan.id } } },
+    });
+    return {
+      reply: `You're all set, ${name}! You're following ${creatorName}'s program: ${planName ?? plan.name}.\n\nSave this number as 'Iron Temple Coach' so you always know it's us.\n\nType HERE when you're at the gym to start.`,
       nextState: "idle",
       context: { userId: user.id },
     };

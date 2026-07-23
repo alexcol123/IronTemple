@@ -21,6 +21,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plan
   // name (User.name) — see CreatorProfile.stageName in schema.prisma.
   const createdByName = creatorProfile?.stageName || plan.createdBy?.name || null;
 
+  // This creator's other public plans — lets a subscriber discover and
+  // one-click switch to a sibling program (e.g. a 3-day vs. 5-day version)
+  // without needing to already know its planId/link.
+  const otherPlans = plan.createdByUserId
+    ? await prisma.workoutPlan.findMany({
+        where: { createdByUserId: plan.createdByUserId, visibility: "public", id: { not: planId } },
+        include: { days: true },
+      })
+    : [];
+
   return NextResponse.json({
     plan: {
       id: plan.id,
@@ -36,6 +46,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plan
       creatorYoutubeUrl: creatorProfile?.youtubeUrl ?? null,
       creatorTiktokUrl: creatorProfile?.tiktokUrl ?? null,
       creatorIntroVideoUrl: creatorProfile?.introVideoUrl ?? null,
+      otherPlans: otherPlans.map((p) => ({ id: p.id, name: p.name, dayCount: p.days.length })),
       days: plan.days.map((d) => ({
         id: d.id,
         day: d.day,

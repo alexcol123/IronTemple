@@ -15,6 +15,7 @@ type Profile = {
   email: string | null;
   createdAt: string;
   planName: string | null;
+  planId: string | null;
   goalPlanName: string;
   tierKey: string;
 };
@@ -111,9 +112,19 @@ export default function ProfileByIdPage() {
           </div>
 
           {profile.planName && (
-            <div className="border border-border rounded-xl px-3 py-2">
-              <p className="text-xs text-muted-foreground">Currently on</p>
-              <p className="text-sm font-medium">{profile.planName}</p>
+            <div className="border border-border rounded-xl px-3 py-2 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Currently on</p>
+                <p className="text-sm font-medium">{profile.planName}</p>
+              </div>
+              {profile.planId && (
+                <Link
+                  href={`/plan/${profile.planId}?userId=${userId}`}
+                  className="text-xs font-medium px-2.5 py-1 rounded-full border border-border hover:bg-muted transition-colors shrink-0"
+                >
+                  View / Switch →
+                </Link>
+              )}
             </div>
           )}
 

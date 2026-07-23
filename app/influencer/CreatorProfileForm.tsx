@@ -33,6 +33,8 @@ export default function CreatorProfileForm({ lockedPhone }: { lockedPhone?: stri
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [stageName, setStageName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [joinCodeStatus, setJoinCodeStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
   const [phone, setPhone] = useState(lockedPhone ?? "");
   const [photoUrl, setPhotoUrl] = useState("");
   const [bio, setBio] = useState("");
@@ -58,6 +60,25 @@ export default function CreatorProfileForm({ lockedPhone }: { lockedPhone?: stri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Live availability check, debounced — same UX as checking a username on
+  // any signup form. Skipped entirely if the code hasn't changed from what's
+  // already saved for this exact creator (typing back to your own current
+  // code shouldn't flash "taken").
+  useEffect(() => {
+    const code = joinCode.trim();
+    if (!code) {
+      setJoinCodeStatus("idle");
+      return;
+    }
+    setJoinCodeStatus("checking");
+    const timeout = setTimeout(() => {
+      fetch(`/api/check-join-code?code=${encodeURIComponent(code)}${savedUserId ? `&excludeUserId=${savedUserId}` : ""}`)
+        .then((r) => r.json())
+        .then((data) => setJoinCodeStatus(data.available ? "available" : "taken"));
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [joinCode, savedUserId]);
+
   async function loadExisting(phoneOverride?: string) {
     const lookupPhone = (phoneOverride ?? phone).trim();
     if (!lookupPhone) return setError("Enter a phone number to look up first.");
@@ -72,6 +93,7 @@ export default function CreatorProfileForm({ lockedPhone }: { lockedPhone?: stri
     setFirstName(data.firstName);
     setLastName(data.lastName);
     setStageName(data.stageName);
+    setJoinCode(data.joinCode);
     setPhotoUrl(data.photoUrl);
     setBio(data.bio);
     setInstagram(data.instagramUrl);
@@ -86,6 +108,7 @@ export default function CreatorProfileForm({ lockedPhone }: { lockedPhone?: stri
     if (!firstName.trim()) return setError("Enter the creator's first name.");
     if (!lastName.trim()) return setError("Enter the creator's last name.");
     if (!phone.trim()) return setError("A phone number is required.");
+    if (joinCode.trim() && joinCodeStatus === "taken") return setError("That join code is already taken — pick another.");
 
     setSaving(true);
     const res = await fetch("/api/influencer-profile", {
@@ -95,6 +118,7 @@ export default function CreatorProfileForm({ lockedPhone }: { lockedPhone?: stri
         firstName,
         lastName,
         stageName,
+        joinCode,
         phone: lockedPhone ?? phone,
         photoUrl,
         bio,
@@ -177,6 +201,30 @@ export default function CreatorProfileForm({ lockedPhone }: { lockedPhone?: stri
             </p>
           </div>
 
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">Join Code</p>
+            <Input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              placeholder="e.g. LARRY25 — or their Instagram handle, since that's what people already know them as"
+              className="text-sm"
+            />
+            <div className="flex items-center gap-1.5 mt-1">
+              {joinCode.trim() && joinCodeStatus === "checking" && (
+                <p className="text-xs text-muted-foreground">Checking availability...</p>
+              )}
+              {joinCode.trim() && joinCodeStatus === "available" && (
+                <p className="text-xs text-emerald-600 dark:text-emerald-400">Available — people text JOIN{joinCode.replace(/[^a-zA-Z0-9]/g, "").toUpperCase()} to follow this creator.</p>
+              )}
+              {joinCode.trim() && joinCodeStatus === "taken" && (
+                <p className="text-xs text-destructive">That code is already taken — try another.</p>
+              )}
+              {!joinCode.trim() && (
+                <p className="text-xs text-muted-foreground">Pick a code for people to join — e.g. their Instagram handle, since that&apos;s what people already know them as.</p>
+              )}
+            </div>
+          </div>
+
           {lockedPhone ? (
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1.5">Phone Number</p>
@@ -233,7 +281,7 @@ export default function CreatorProfileForm({ lockedPhone }: { lockedPhone?: stri
 
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || joinCodeStatus === "checking" || joinCodeStatus === "taken"}
             className="w-full text-sm text-center px-4 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white transition-colors disabled:opacity-50"
           >
             {saving ? "Saving..." : savedUserId ? "Save Changes" : "Create Creator"}

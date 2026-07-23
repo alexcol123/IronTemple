@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
       email: user.email,
       createdAt: user.createdAt,
       planName: userPlan?.plan.name ?? null,
+      planId: userPlan?.planId ?? null,
       goalPlanName,
       tierKey,
       isCreator: !!user.creatorProfile,

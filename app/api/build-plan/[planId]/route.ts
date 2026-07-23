@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { GOALS } from "@/lib/sms-engine";
+import { MAX_PUBLIC_PLANS } from "@/lib/plan-visibility";
 
 type ExerciseInput = { name: string; sets: number; reps: number; type?: "weighted" | "cardio" | "bodyweight" };
 type DayInput = { bodyParts: string[]; exercises: ExerciseInput[] };
@@ -33,6 +34,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ pl
   });
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
   if (plan.createdByUserId !== userId) return NextResponse.json({ error: "Only this plan's creator can edit it" }, { status: 403 });
+
+  // Only relevant when actually transitioning personal -> public — a plan
+  // that's already public and staying public shouldn't count against itself.
+  if (visibility === "public" && plan.visibility !== "public") {
+    const otherPublicCount = await prisma.workoutPlan.count({
+      where: { createdByUserId: userId, visibility: "public", id: { not: planId } },
+    });
+    if (otherPublicCount >= MAX_PUBLIC_PLANS) {
+      return NextResponse.json(
+        { error: `You already have ${MAX_PUBLIC_PLANS} public plans — make one personal first.` },
+        { status: 409 },
+      );
+    }
+  }
 
   await prisma.workoutPlan.update({
     where: { id: planId },

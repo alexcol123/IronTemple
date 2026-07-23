@@ -7,9 +7,9 @@ import { ReadNav } from "@/components/read-nav";
 // A creator's own landing page — link-cards instead of one long form, so
 // Profile/Workout/Subscribers/Messaging can each grow independently (banking
 // fields, a real subscriber list, broadcast messages) without turning this
-// into one giant scrolling page. Subscribers and Messaging have no real
-// pages behind them yet (see CLAUDE.md) — shown as disabled "Coming soon"
-// cards rather than pretending they're finished.
+// into one giant scrolling page. Messaging has no real page behind it yet
+// (see CLAUDE.md) — shown as a disabled "Coming soon" card rather than
+// pretending it's finished.
 export default async function CreatorHomePage() {
   const { userId } = await requireCreator();
   const user = await prisma.user.findUnique({ where: { id: userId }, include: { creatorProfile: true } });
@@ -26,13 +26,14 @@ export default async function CreatorHomePage() {
       title: "My Workout",
       description: "Build or edit the program your subscribers follow.",
     },
-  ];
-
-  const COMING_SOON = [
     {
+      href: "/influencer/me/subscribers",
       title: "Subscribers",
       description: "See who's following your plan.",
     },
+  ];
+
+  const COMING_SOON = [
     {
       title: "Messaging",
       description: "Send your subscribers an update or encouragement.",
