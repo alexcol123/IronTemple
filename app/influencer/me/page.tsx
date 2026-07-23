@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
 import { requireCreator } from "@/lib/auth-roles";
 import { prisma } from "@/lib/db";
 import { ReadNav } from "@/components/read-nav";
@@ -50,9 +49,6 @@ export default async function CreatorHomePage() {
             <p className="text-sm font-mono font-medium text-foreground">{displayName}</p>
             <p className="text-xs text-muted-foreground">Creator Home</p>
           </div>
-        </div>
-        <div className="flex justify-end -mt-4 mb-4">
-          <UserButton />
         </div>
 
         <div className="flex flex-col gap-3">

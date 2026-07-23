@@ -23,7 +23,16 @@ const ADMIN_PHONES = (process.env.ADMIN_PHONES ?? "")
   .map(normalizePhone)
   .filter(Boolean);
 
-export type SignedInRole = { role: "admin" } | { role: "creator"; userId: string; phone: string } | { role: "none" };
+// "unclaimed" = a real, phone-verified Clerk session that doesn't match an
+// admin or an existing CreatorProfile — today the only way to reach Clerk
+// auth at all is /admin, /influencer, or the self-serve creator signup link
+// (/influencer/join), so this state specifically means "verified, mid-way
+// through becoming a creator" rather than some other kind of visitor.
+export type SignedInRole =
+  | { role: "admin" }
+  | { role: "creator"; userId: string; phone: string }
+  | { role: "unclaimed"; phone: string }
+  | { role: "none" };
 
 export async function getSignedInRole(): Promise<SignedInRole> {
   const user = await currentUser();
@@ -39,7 +48,7 @@ export async function getSignedInRole(): Promise<SignedInRole> {
   const match = creators.find((c) => normalizePhone(c.user.phone) === normalized);
   if (match) return { role: "creator", userId: match.userId, phone: match.user.phone };
 
-  return { role: "none" };
+  return { role: "unclaimed", phone: rawPhone };
 }
 
 export async function requireAdmin(): Promise<void> {

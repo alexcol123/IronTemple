@@ -20,7 +20,11 @@ export async function GET(req: NextRequest) {
 
   const role = await getSignedInRole();
   if (role.role === "none") return NextResponse.json({ error: "Not authorized" }, { status: 401 });
-  if (role.role === "creator" && normalizePhone(role.phone) !== normalizePhone(phone)) {
+  // Creator editing their own live profile, or a freshly-verified phone
+  // self-onboarding for the first time (/influencer/join) — both may only
+  // ever read/write their own verified phone, never someone else's. Only
+  // admin may read/write an arbitrary phone.
+  if ((role.role === "creator" || role.role === "unclaimed") && normalizePhone(role.phone) !== normalizePhone(phone)) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
@@ -79,7 +83,11 @@ export async function POST(req: NextRequest) {
 
   const role = await getSignedInRole();
   if (role.role === "none") return NextResponse.json({ error: "Not authorized" }, { status: 401 });
-  if (role.role === "creator" && normalizePhone(role.phone) !== normalizePhone(phone)) {
+  // Creator editing their own live profile, or a freshly-verified phone
+  // self-onboarding for the first time (/influencer/join) — both may only
+  // ever read/write their own verified phone, never someone else's. Only
+  // admin may read/write an arbitrary phone.
+  if ((role.role === "creator" || role.role === "unclaimed") && normalizePhone(role.phone) !== normalizePhone(phone)) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 

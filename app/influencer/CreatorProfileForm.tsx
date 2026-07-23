@@ -28,7 +28,17 @@ function socialUrl(value: string, platform: "instagram" | "youtube" | "tiktok"):
   return `https://tiktok.com/@${handle}`;
 }
 
-export default function CreatorProfileForm({ lockedPhone }: { lockedPhone?: string }) {
+export default function CreatorProfileForm({
+  lockedPhone,
+  firstTimeSetup,
+}: {
+  lockedPhone?: string;
+  // True only for the self-serve /influencer/join entry point — there's no
+  // existing profile to "go back" to yet, so the usual "← Creator Home" link
+  // (which would bounce off requireCreator() and loop right back here) is
+  // replaced with a one-line intro instead.
+  firstTimeSetup?: boolean;
+}) {
   const searchParams = useSearchParams();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -140,17 +150,30 @@ export default function CreatorProfileForm({ lockedPhone }: { lockedPhone?: stri
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-lg mx-auto p-6 pb-16">
-        <Link
-          href={lockedPhone ? "/influencer/me" : "/influencer"}
-          className="text-xs text-muted-foreground hover:text-foreground mb-3 inline-block"
-        >
-          {lockedPhone ? "← Creator Home" : "← Creator Tools"}
-        </Link>
+        {!firstTimeSetup && (
+          <Link
+            href={lockedPhone ? "/influencer/me" : "/influencer"}
+            className="text-xs text-muted-foreground hover:text-foreground mb-3 inline-block"
+          >
+            {lockedPhone ? "← Creator Home" : "← Creator Tools"}
+          </Link>
+        )}
 
         <div className="flex items-baseline justify-between pb-4 mb-6 border-b-2 border-border">
           <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Iron Temple</p>
-          <p className="text-xs text-muted-foreground">{lockedPhone ? "My Profile" : "Creator Onboarding"}</p>
+          <p className="text-xs text-muted-foreground">
+            {firstTimeSetup ? "Get Started" : lockedPhone ? "My Profile" : "Creator Onboarding"}
+          </p>
         </div>
+
+        {firstTimeSetup && (
+          <div className="mb-6">
+            <h1 className="text-xl font-bold text-foreground">Let&apos;s start earning.</h1>
+            <p className="text-sm text-muted-foreground mt-1.5">
+              A few details about you and your program, then you&apos;re live — your fans can text your code today.
+            </p>
+          </div>
+        )}
 
         <div className="rounded-xl border border-amber-400/40 bg-amber-50 dark:bg-amber-950/20 px-3 py-2.5 mb-6">
           <p className="text-xs text-amber-700 dark:text-amber-400">

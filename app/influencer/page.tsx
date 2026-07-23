@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
 import { requireAdmin } from "@/lib/auth-roles";
 
 // =============================================================================
@@ -28,14 +27,11 @@ export default async function InfluencerIndexPage() {
   await requireAdmin();
   return (
     <div className="min-h-screen bg-background p-6 max-w-2xl mx-auto">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Creator Tools</h1>
-          <p className="text-sm text-muted-foreground mt-1 mb-8">
-            Prototype space for the creator/influencer side of the app — the monetization layer described in CLAUDE.md, built incrementally.
-          </p>
-        </div>
-        <UserButton />
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Creator Tools</h1>
+        <p className="text-sm text-muted-foreground mt-1 mb-8">
+          Prototype space for the creator/influencer side of the app — the monetization layer described in CLAUDE.md, built incrementally.
+        </p>
       </div>
 
       <div className="flex flex-col gap-3">
