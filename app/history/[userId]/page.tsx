@@ -142,34 +142,43 @@ export default function HistoryByIdPage() {
           <p className="text-xs text-muted-foreground">History</p>
         </div>
 
-        {/* Today's workout CTA */}
+        {/* Today's workout CTA — filled/bright on purpose, not just another
+            bordered card: this is the one thing on the page someone landing
+            here to train actually wants, not a history entry to review. */}
         {todaySession && !todaySession.allDone && (
           <Link
             href={`/today/${userId}`}
-            className="mb-6 rounded-xl border border-border px-4 py-3 flex items-center justify-between hover:bg-muted transition-colors"
+            className="mb-6 rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-4 py-3 flex items-center justify-between transition-colors"
           >
             <div>
               <p className="text-sm font-semibold">{doneCount === 0 ? "Start Workout" : "Continue Workout"}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="text-xs text-white/80 mt-0.5">
                 Day {todaySession.nextDayNumber}: {todaySession.dayName}
                 {doneCount > 0 && ` · ${doneCount} of ${totalCount} done`}
               </p>
             </div>
-            <span className="text-amber-500">→</span>
+            <span className="text-white text-lg">→</span>
           </Link>
         )}
         {todaySession && todaySession.allDone && (
           <Link
             href={`/today/${userId}`}
-            className="mb-6 rounded-xl border border-border px-4 py-3 flex items-center justify-between hover:bg-muted transition-colors"
+            className="mb-6 rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-4 py-3 flex items-center justify-between transition-colors"
           >
             <div>
               <p className="text-sm font-semibold">All {todaySession.totalDays} sessions complete this week</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Nice work! Want to add a bonus session?</p>
+              <p className="text-xs text-white/80 mt-0.5">Nice work! Want to add a bonus session?</p>
             </div>
-            <span className="text-amber-500">→</span>
+            <span className="text-white text-lg">→</span>
           </Link>
         )}
+
+        {/* Marks the transition from the CTA above (an action) to the log
+            below (a record) — "History" doesn't appear anywhere else on this
+            page now that the nav tab reads "Today" instead. */}
+        <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground pt-4 mt-2 mb-4 border-t border-border">
+          History
+        </p>
 
         {/* Week navigation */}
         <div className="flex items-center justify-between mb-4">

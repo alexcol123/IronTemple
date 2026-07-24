@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { requireCreator } from "@/lib/auth-roles";
-import { prisma } from "@/lib/db";
 import { ReadNav } from "@/components/read-nav";
-import { getMondayOfThisWeek } from "@/lib/sms-engine";
+import { getCreatorSubscribers, timeAgo } from "@/lib/creator-subscribers";
 
 // Everyone shows as "Trial" for now — there's no real Stripe billing yet
 // (see CLAUDE.md's dependency order: this dashboard comes before payment),
@@ -16,34 +15,9 @@ function StatusBadge() {
   );
 }
 
-function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 3600) return "just now";
-  const hours = Math.floor(seconds / 3600);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
-}
-
 export default async function CreatorSubscribersPage() {
   const { userId } = await requireCreator();
-
-  const myPlans = await prisma.workoutPlan.findMany({ where: { createdByUserId: userId } });
-  const planIds = myPlans.map((p) => p.id);
-
-  const memberships = await prisma.userPlan.findMany({
-    where: { planId: { in: planIds }, endDate: null, userId: { not: userId } },
-    include: {
-      user: { include: { sessions: { orderBy: { date: "desc" }, take: 1 } } },
-      plan: true,
-    },
-    orderBy: { startDate: "desc" },
-  });
-
-  const monday = getMondayOfThisWeek();
-  const newThisWeek = memberships.filter((m) => m.startDate >= monday).length;
+  const { memberships, newThisWeek } = await getCreatorSubscribers(userId);
 
   return (
     <div className="min-h-screen bg-background">

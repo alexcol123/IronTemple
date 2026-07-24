@@ -374,11 +374,20 @@ export async function handleMessage(
   }
 
   // APP works from any state — one link to the hub (history, PRs, my info, etc).
+  // A creator also gets their dashboard link — it's Clerk-protected (unlike
+  // every other link this bot sends), so tapping it while signed out prompts
+  // a phone/OTP verify first, then lands them there. That's expected, not a
+  // bug — this is just how a creator finds their way in without already
+  // knowing the site exists.
   if (input === "APP") {
-    const user = await prisma.user.findUnique({ where: { phone } });
+    const user = await prisma.user.findUnique({ where: { phone }, include: { creatorProfile: true } });
     if (!user) return { reply: "Phone not found. Text JOIN to sign up.", nextState: "idle" };
+    const lines = [`Here's your app:`, `${process.env.APP_URL}/menu/${user.id}`];
+    if (user.creatorProfile) {
+      lines.push("", "Manage your program:", `${process.env.APP_URL}/influencer/me`);
+    }
     return {
-      reply: `Here's your app:\n${process.env.APP_URL}/menu/${user.id}`,
+      reply: lines.join("\n"),
       nextState: state,
       context,
     };
@@ -540,6 +549,22 @@ export async function handleMessage(
       };
     }
 
+    // Creator quick-menu shortcut — "1"/"2" answer the numbered prompt shown
+    // to a creator by the unrecognized-input fallback below. Scoped to
+    // creators only so a bare "1"/"2" from anyone else keeps meaning nothing
+    // in idle state, same as today. "1" delegates to the exact same HERE
+    // handling below (recursing rather than duplicating that whole block);
+    // "2" mirrors APP's creator-dashboard line directly.
+    if (input === "1" || input === "2") {
+      const maybeCreator = await prisma.user.findUnique({ where: { phone }, include: { creatorProfile: true } });
+      if (maybeCreator?.creatorProfile) {
+        if (input === "2") {
+          return { reply: `Manage your program:\n${process.env.APP_URL}/influencer/me`, nextState: "idle" };
+        }
+        return handleMessage(phone, "HERE", state, context);
+      }
+    }
+
     if (input === "HERE") {
       const user = await prisma.user.findUnique({
         where: { phone },
@@ -623,8 +648,16 @@ export async function handleMessage(
     }
 
     // Unrecognized input — point a member at what they can actually do instead
-    // of telling them to sign up again; only ask a non-member to JOIN.
-    const existingUser = await prisma.user.findUnique({ where: { phone } });
+    // of telling them to sign up again; only ask a non-member to JOIN. A
+    // creator gets a version that acknowledges both hats they wear.
+    const existingUser = await prisma.user.findUnique({ where: { phone }, include: { creatorProfile: true } });
+    if (existingUser?.creatorProfile) {
+      const displayName = existingUser.creatorProfile.stageName || existingUser.name;
+      return {
+        reply: `Hey ${displayName}! What do you need?\n\n1. Workout\n2. Manage your program\n\nReply with a number.`,
+        nextState: "idle",
+      };
+    }
     if (existingUser) {
       return { reply: "Type HERE to start your workout, or APP for everything else.", nextState: "idle" };
     }

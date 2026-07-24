@@ -3,32 +3,23 @@ import { requireCreator } from "@/lib/auth-roles";
 import { prisma } from "@/lib/db";
 import { ReadNav } from "@/components/read-nav";
 
-// A creator's own landing page — link-cards instead of one long form, so
-// Profile/Workout/Subscribers/Messaging can each grow independently (banking
-// fields, a real subscriber list, broadcast messages) without turning this
-// into one giant scrolling page. Messaging has no real page behind it yet
-// (see CLAUDE.md) — shown as a disabled "Coming soon" card rather than
-// pretending it's finished.
+// A creator's own landing page — Home in the nav bar (see
+// components/read-nav.tsx). Deliberately not just a stub: Profile-editing
+// and Workout-building both used to be permanent nav tabs, but they're
+// rare/one-time actions, not things a creator wants a thumb-reach slot for
+// on every screen — they live here instead as a quiet button and a card.
 export default async function CreatorHomePage() {
   const { userId } = await requireCreator();
   const user = await prisma.user.findUnique({ where: { id: userId }, include: { creatorProfile: true } });
   const displayName = user?.creatorProfile?.stageName || user?.name || "Creator";
+  const photoUrl = user?.creatorProfile?.photoUrl;
+  const bio = user?.creatorProfile?.bio;
 
   const LINKS = [
-    {
-      href: "/influencer/me/profile",
-      title: "Profile & Banking",
-      description: "Name, bio, socials, intro video. Payout/banking details coming later.",
-    },
     {
       href: `/build/${userId}?from=business`,
       title: "My Workout",
       description: "Build or edit the program your subscribers follow.",
-    },
-    {
-      href: "/influencer/me/subscribers",
-      title: "Subscribers",
-      description: "See who's following your plan.",
     },
   ];
 
@@ -45,11 +36,36 @@ export default async function CreatorHomePage() {
       <div className="max-w-lg mx-auto p-6 pb-16">
         <div className="flex items-baseline justify-between pb-4 mb-6 border-b-2 border-border">
           <p className="text-xs font-bold tracking-widest uppercase text-muted-foreground">Iron Temple</p>
-          <div className="text-right">
-            <p className="text-sm font-mono font-medium text-foreground">{displayName}</p>
-            <p className="text-xs text-muted-foreground">Creator Home</p>
+          <p className="text-xs text-muted-foreground">Creator Home</p>
+        </div>
+
+        {/* The photo/bio a creator set on their own profile — surfaced here
+            too, not just on the public plan page, since this is their own
+            landing spot every time they log in. */}
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-16 h-16 rounded-full bg-muted overflow-hidden shrink-0 flex items-center justify-center">
+            {photoUrl ? (
+              <img src={photoUrl} alt={displayName} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-lg font-semibold text-muted-foreground">{displayName[0] ?? "?"}</span>
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-base font-semibold text-foreground truncate">{displayName}</p>
+            {bio ? (
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{bio}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-0.5">No photo or bio yet</p>
+            )}
           </div>
         </div>
+
+        <Link
+          href="/influencer/me/profile"
+          className="text-xs text-muted-foreground hover:text-foreground underline inline-block mb-6"
+        >
+          Edit profile →
+        </Link>
 
         <div className="flex flex-col gap-3">
           {LINKS.map((link) => (

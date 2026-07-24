@@ -22,14 +22,22 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({
-    creators: profiles.map((p) => ({
+  // One count query per creator — same "small creator count for now" call
+  // as getSignedInRole's plain findMany (see lib/auth-roles.ts), not worth a
+  // fancier grouped query until there are enough creators for it to matter.
+  const creators = await Promise.all(
+    profiles.map(async (p) => ({
       userId: p.userId,
       name: p.user.name,
       stageName: p.stageName,
       phone: p.user.phone,
       photoUrl: p.photoUrl,
       plans: p.user.createdPlans,
+      subscriberCount: await prisma.userPlan.count({
+        where: { endDate: null, userId: { not: p.userId }, plan: { createdByUserId: p.userId } },
+      }),
     })),
-  });
+  );
+
+  return NextResponse.json({ creators });
 }

@@ -10,6 +10,7 @@ type Creator = {
   phone: string;
   photoUrl: string | null;
   plans: { id: string; name: string }[];
+  subscriberCount: number;
 };
 
 export default function CreatorsListPage() {
@@ -51,8 +52,12 @@ export default function CreatorsListPage() {
           {creators.map((c) => {
             const displayName = c.stageName || c.name;
             return (
-              <div key={c.userId} className="border border-border rounded-xl p-4">
-                <div className="flex items-center gap-3 mb-3">
+              <Link
+                key={c.userId}
+                href={`/influencer/creators/${c.userId}`}
+                className="block border border-border rounded-xl p-4 hover:bg-muted transition-colors"
+              >
+                <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-muted overflow-hidden shrink-0 flex items-center justify-center">
                     {c.photoUrl ? (
                       <img src={c.photoUrl} alt={displayName} className="w-full h-full object-cover" />
@@ -60,47 +65,21 @@ export default function CreatorsListPage() {
                       <span className="text-xs text-muted-foreground">{displayName[0] ?? "?"}</span>
                     )}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold truncate">{displayName}</p>
                     <p className="text-xs text-muted-foreground truncate">{c.phone}</p>
                   </div>
+                  <p className="text-xs text-muted-foreground shrink-0">
+                    {c.subscriberCount} subscriber{c.subscriberCount === 1 ? "" : "s"}
+                  </p>
                 </div>
 
                 {c.plans.length > 0 && (
-                  <p className="text-xs text-muted-foreground mb-3">
+                  <p className="text-xs text-muted-foreground mt-3">
                     {c.plans.length} plan{c.plans.length > 1 ? "s" : ""}: {c.plans.map((p) => p.name).join(", ")}
                   </p>
                 )}
-
-                <div className="flex flex-wrap gap-2">
-                  <Link
-                    href={`/build/${c.userId}?from=business`}
-                    className="text-xs font-medium px-3 py-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white"
-                  >
-                    Build their plan →
-                  </Link>
-                  {c.plans[0] && (
-                    <Link
-                      href={`/plan/${c.plans[0].id}?userId=${c.userId}`}
-                      className="text-xs font-medium px-3 py-1.5 rounded-full border border-border hover:bg-muted transition-colors"
-                    >
-                      View public plan →
-                    </Link>
-                  )}
-                  <Link
-                    href={`/menu/${c.userId}`}
-                    className="text-xs font-medium px-3 py-1.5 rounded-full border border-border hover:bg-muted transition-colors"
-                  >
-                    Menu →
-                  </Link>
-                  <Link
-                    href={`/influencer/onboarding?phone=${encodeURIComponent(c.phone)}`}
-                    className="text-xs font-medium px-3 py-1.5 rounded-full border border-border hover:bg-muted transition-colors"
-                  >
-                    Edit profile →
-                  </Link>
-                </div>
-              </div>
+              </Link>
             );
           })}
         </div>

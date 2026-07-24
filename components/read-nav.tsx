@@ -16,21 +16,31 @@ export function ReadNav({ userId }: { userId: string }) {
 
   const onBusinessSide = pathname.startsWith("/influencer");
 
-  // Personal side: History/PRs/Menu — the real athlete pages. Weekly
-  // Progress isn't in here on purpose (meant to arrive via a proactive
-  // Sunday-evening SMS link per CLAUDE.md, not be browsed to); still one tap
-  // away inside Menu until that send exists.
+  // Personal side: Today/PRs/Menu — the real athlete pages. Labeled "Today"
+  // rather than "History" even though it still points at /history — that
+  // page leads with a Start/Continue Workout card (see
+  // app/history/[userId]/page.tsx), so "Today" sets the right expectation
+  // for what tapping it is actually for, matching the same word already
+  // used everywhere else (the real /today route, "Type HERE to start
+  // today's workout" over SMS) instead of a third synonym for the same
+  // concept. Weekly Progress isn't in here on purpose (meant to arrive via
+  // a proactive Sunday-evening SMS link per CLAUDE.md, not be browsed to);
+  // still one tap away inside Menu until that send exists.
   //
-  // Business side: Profile/Workout — the only two real creator pages today.
-  // Subscribers/Messaging aren't built yet, so nothing to link to until they
-  // exist (see the "Coming soon" cards on /influencer/me).
+  // Business side: Home/Subs — kept deliberately short. Profile and Workout
+  // used to also be tabs, but most creators are on a phone and Subs (their
+  // subscriber count/growth — the number they actually want to check often)
+  // earns a permanent slot far more than Profile-editing or Workout-building
+  // do, both rare/one-time actions. Those two now live as a button and a
+  // card on /influencer/me itself instead. Exact match (not startsWith) for
+  // Home so its own sub-pages (Profile, Subscribers) don't also light it up.
   const tabs = onBusinessSide
     ? [
-        { label: "Profile", href: "/influencer/me/profile", active: pathname.startsWith("/influencer/me/profile") },
-        { label: "Workout", href: `/build/${userId}?from=business`, active: pathname.startsWith("/build/") },
+        { label: "Home", href: "/influencer/me", active: pathname === "/influencer/me" },
+        { label: "Subs", href: "/influencer/me/subscribers", active: pathname.startsWith("/influencer/me/subscribers") },
       ]
     : [
-        { label: "History", href: `/history/${userId}`, active: pathname.startsWith("/history/") },
+        { label: "Today", href: `/history/${userId}`, active: pathname.startsWith("/history/") },
         { label: "PRs", href: `/prs/${userId}`, active: pathname.startsWith("/prs/") },
         { label: "Menu", href: `/menu/${userId}`, active: pathname.startsWith("/menu/") },
       ];
@@ -41,7 +51,7 @@ export function ReadNav({ userId }: { userId: string }) {
         <Link
           key={tab.href}
           href={tab.href}
-          className={`flex-1 text-center text-xs px-2 py-1.5 rounded-lg transition-colors ${
+          className={`flex-1 text-center text-xs px-2 py-1.5 rounded-lg transition-colors whitespace-nowrap ${
             tab.active ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted"
           }`}
         >
@@ -54,12 +64,17 @@ export function ReadNav({ userId }: { userId: string }) {
           mechanism as the tabs above; nothing to persist. Personal lands on
           /history rather than /today — /today is the focused, no-nav workout
           logging screen, so landing there would mean losing the toggle
-          entirely until navigating elsewhere. */}
+          entirely until navigating elsewhere.
+          flex-[2] (vs. flex-1 on the tabs above) since this one box holds two
+          full labels ("Personal"/"Business") where each tab holds one — an
+          equal flex-1 split left "Business" too narrow for its own text on a
+          phone-width screen, clipping the last letters. Tighter internal
+          padding (px-1.5 vs the tabs' px-2) buys a little more back too. */}
       {isCreator && (
-        <div className="flex-1 flex rounded-lg overflow-hidden border border-border text-xs">
+        <div className="flex-2 flex rounded-lg overflow-hidden border border-border text-xs">
           <Link
             href={`/history/${userId}`}
-            className={`flex-1 text-center px-2 py-1.5 transition-colors ${
+            className={`flex-1 text-center px-1 py-1.5 whitespace-nowrap transition-colors ${
               !onBusinessSide ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted"
             }`}
           >
@@ -67,7 +82,7 @@ export function ReadNav({ userId }: { userId: string }) {
           </Link>
           <Link
             href="/influencer/me"
-            className={`flex-1 text-center px-2 py-1.5 transition-colors ${
+            className={`flex-1 text-center px-1 py-1.5 whitespace-nowrap transition-colors ${
               onBusinessSide ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground hover:bg-muted"
             }`}
           >
